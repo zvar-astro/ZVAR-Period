@@ -1,0 +1,22 @@
+[
+{
+  "directory": "/home/swhitebook/github/ZVAR/build",
+  "command": "/usr/local/cuda/bin/nvcc -forward-unknown-to-host-compiler  -I/home/swhitebook/other-packages/eigen-3.4.0 -I/home/swhitebook/other-packages/Gpufit/Gpufit  -O3 -g -std=c++14 -x cu -dc /home/swhitebook/github/ZVAR/main.cu -o CMakeFiles/cudaFPW.dir/main.cu.o",
+  "file": "/home/swhitebook/github/ZVAR/main.cu"
+},
+{
+  "directory": "/home/swhitebook/github/ZVAR/build",
+  "command": "/usr/local/cuda/bin/nvcc -forward-unknown-to-host-compiler  -I/home/swhitebook/other-packages/eigen-3.4.0 -I/home/swhitebook/other-packages/Gpufit/Gpufit  -O3 -g -std=c++14 -x cu -dc /home/swhitebook/github/ZVAR/periodograms/FPW/kernels.cu -o CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o",
+  "file": "/home/swhitebook/github/ZVAR/periodograms/FPW/kernels.cu"
+},
+{
+  "directory": "/home/swhitebook/github/ZVAR/build",
+  "command": "/usr/bin/c++  -I/home/swhitebook/other-packages/eigen-3.4.0 -I/home/swhitebook/other-packages/Gpufit/Gpufit  -O3 -g -std=gnu++14 -o CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o -c /home/swhitebook/github/ZVAR/periodograms/FPW/cpu_functions.cpp",
+  "file": "/home/swhitebook/github/ZVAR/periodograms/FPW/cpu_functions.cpp"
+},
+{
+  "directory": "/home/swhitebook/github/ZVAR/build",
+  "command": "/usr/local/cuda/bin/nvcc -forward-unknown-to-host-compiler  -I/home/swhitebook/other-packages/eigen-3.4.0 -I/home/swhitebook/other-packages/Gpufit/Gpufit  -O3 -g -std=c++14 -x cu -dc /home/swhitebook/github/ZVAR/periodograms/FPW/wrappers.cu -o CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o",
+  "file": "/home/swhitebook/github/ZVAR/periodograms/FPW/wrappers.cu"
+}
+]

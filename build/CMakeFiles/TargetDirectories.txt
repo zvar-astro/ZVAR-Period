@@ -1,0 +1,5 @@
+/home/swhitebook/github/ZVAR/build/CMakeFiles/cudaFPW.dir
+/home/swhitebook/github/ZVAR/build/CMakeFiles/package.dir
+/home/swhitebook/github/ZVAR/build/CMakeFiles/package_source.dir
+/home/swhitebook/github/ZVAR/build/CMakeFiles/edit_cache.dir
+/home/swhitebook/github/ZVAR/build/CMakeFiles/rebuild_cache.dir
