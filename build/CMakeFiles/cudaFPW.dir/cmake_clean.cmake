@@ -8,6 +8,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o.d"
   "CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o"
   "CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o.d"
+  "CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o"
+  "CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o.d"
   "cudaFPW"
   "cudaFPW.pdb"
 )

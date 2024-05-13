@@ -516,10 +516,11 @@ CMakeFiles/cudaFPW.dir/main.cu.o : /home/swhitebook/github/ZVAR/main.cu \
     /home/swhitebook/other-packages/eigen-3.4.0/Eigen/src/Eigenvalues/GeneralizedEigenSolver.h \
     /home/swhitebook/other-packages/eigen-3.4.0/Eigen/src/Eigenvalues/./RealQZ.h \
     /home/swhitebook/other-packages/eigen-3.4.0/Eigen/src/Eigenvalues/MatrixBaseEigenvalues.h \
-    /usr/include/c++/11/ctime \
+    /home/swhitebook/github/ZVAR/statistics/polyfit.cuh \
     /home/swhitebook/other-packages/Gpufit/Gpufit/gpufit.h \
     /home/swhitebook/other-packages/Gpufit/Gpufit/constants.h \
     /home/swhitebook/other-packages/Gpufit/Gpufit/definitions.h \
+    /usr/include/c++/11/ctime \
     /usr/include/c++/11/chrono \
     /usr/include/c++/11/ratio \
     /usr/include/c++/11/bits/parse_numbers.h

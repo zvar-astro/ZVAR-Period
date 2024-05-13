@@ -5,16 +5,16 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
     int N_parameters = 0;
     switch (modelID) {
         case 13: // Quadratic model
-            int N_parameters = 3;
+            N_parameters = 3;
             break;
         case 14: // Cubic model
-            int N_parameters = 4;
+            N_parameters = 4;
             break;
         case 15: // 7 degree model
-            int N_parameters = 8;
+            N_parameters = 8;
             break;
         case 16: // 15 degree model
-            int N_parameters = 16;
+            N_parameters = 16;
             break;
         default:
             throw std::invalid_argument("Invalid model ID");

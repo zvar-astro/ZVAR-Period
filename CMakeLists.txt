@@ -14,7 +14,7 @@ enable_language(CUDA)
 find_package(CUDA REQUIRED)
 
 # Add the executable
-add_executable(cudaFPW main.cu ../periodograms/FPW/kernels.cu ../periodograms/FPW/cpu_functions.cpp ../periodograms/FPW/wrappers.cu)
+add_executable(cudaFPW main.cu ../periodograms/FPW/kernels.cu ../periodograms/FPW/cpu_functions.cpp ../periodograms/FPW/wrappers.cu ../statistics/polyfit.cu)
 
 # Specify the CUDA standard
 set_property(TARGET cudaFPW 

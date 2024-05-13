@@ -245,6 +245,30 @@ periodograms/FPW/wrappers.cu.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/cudaFPW.dir/build.make CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.s
 .PHONY : periodograms/FPW/wrappers.cu.s
 
+statistics/polyfit.o: statistics/polyfit.cu.o
+.PHONY : statistics/polyfit.o
+
+# target to build an object file
+statistics/polyfit.cu.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/cudaFPW.dir/build.make CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o
+.PHONY : statistics/polyfit.cu.o
+
+statistics/polyfit.i: statistics/polyfit.cu.i
+.PHONY : statistics/polyfit.i
+
+# target to preprocess a source file
+statistics/polyfit.cu.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/cudaFPW.dir/build.make CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.i
+.PHONY : statistics/polyfit.cu.i
+
+statistics/polyfit.s: statistics/polyfit.cu.s
+.PHONY : statistics/polyfit.s
+
+# target to generate assembly for a file
+statistics/polyfit.cu.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/cudaFPW.dir/build.make CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.s
+.PHONY : statistics/polyfit.cu.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -268,6 +292,9 @@ help:
 	@echo "... periodograms/FPW/wrappers.o"
 	@echo "... periodograms/FPW/wrappers.i"
 	@echo "... periodograms/FPW/wrappers.s"
+	@echo "... statistics/polyfit.o"
+	@echo "... statistics/polyfit.i"
+	@echo "... statistics/polyfit.s"
 .PHONY : help
 
 

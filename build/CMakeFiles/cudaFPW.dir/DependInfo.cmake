@@ -11,6 +11,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/swhitebook/github/ZVAR/main.cu" "CMakeFiles/cudaFPW.dir/main.cu.o" "gcc" "CMakeFiles/cudaFPW.dir/main.cu.o.d"
   "/home/swhitebook/github/ZVAR/periodograms/FPW/kernels.cu" "CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o" "gcc" "CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o.d"
   "/home/swhitebook/github/ZVAR/periodograms/FPW/wrappers.cu" "CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o" "gcc" "CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o.d"
+  "/home/swhitebook/github/ZVAR/statistics/polyfit.cu" "CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o" "gcc" "CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o.d"
   "/home/swhitebook/github/ZVAR/periodograms/FPW/cpu_functions.cpp" "CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o" "gcc" "CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o.d"
   )
 

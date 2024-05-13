@@ -81,12 +81,12 @@ clean: CMakeFiles/cudaFPW.dir/clean
 CMakeFiles/cudaFPW.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/cudaFPW.dir/build.make CMakeFiles/cudaFPW.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/cudaFPW.dir/build.make CMakeFiles/cudaFPW.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/swhitebook/github/ZVAR/build/CMakeFiles --progress-num=1,2,3,4,5,6 "Built target cudaFPW"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/swhitebook/github/ZVAR/build/CMakeFiles --progress-num=1,2,3,4,5,6,7 "Built target cudaFPW"
 .PHONY : CMakeFiles/cudaFPW.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/cudaFPW.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/swhitebook/github/ZVAR/build/CMakeFiles 6
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/swhitebook/github/ZVAR/build/CMakeFiles 7
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/cudaFPW.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/swhitebook/github/ZVAR/build/CMakeFiles 0
 .PHONY : CMakeFiles/cudaFPW.dir/rule

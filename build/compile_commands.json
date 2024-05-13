@@ -18,5 +18,10 @@
   "directory": "/home/swhitebook/github/ZVAR/build",
   "command": "/usr/local/cuda/bin/nvcc -forward-unknown-to-host-compiler  -I/home/swhitebook/other-packages/eigen-3.4.0 -I/home/swhitebook/other-packages/Gpufit/Gpufit  -O3 -g -std=c++14 -x cu -dc /home/swhitebook/github/ZVAR/periodograms/FPW/wrappers.cu -o CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o",
   "file": "/home/swhitebook/github/ZVAR/periodograms/FPW/wrappers.cu"
+},
+{
+  "directory": "/home/swhitebook/github/ZVAR/build",
+  "command": "/usr/local/cuda/bin/nvcc -forward-unknown-to-host-compiler  -I/home/swhitebook/other-packages/eigen-3.4.0 -I/home/swhitebook/other-packages/Gpufit/Gpufit  -O3 -g -std=c++14 -x cu -dc /home/swhitebook/github/ZVAR/statistics/polyfit.cu -o CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o",
+  "file": "/home/swhitebook/github/ZVAR/statistics/polyfit.cu"
 }
 ]
