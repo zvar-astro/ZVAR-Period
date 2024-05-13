@@ -519,4 +519,7 @@ CMakeFiles/cudaFPW.dir/main.cu.o : /home/swhitebook/github/ZVAR/main.cu \
     /usr/include/c++/11/ctime \
     /home/swhitebook/other-packages/Gpufit/Gpufit/gpufit.h \
     /home/swhitebook/other-packages/Gpufit/Gpufit/constants.h \
-    /home/swhitebook/other-packages/Gpufit/Gpufit/definitions.h
+    /home/swhitebook/other-packages/Gpufit/Gpufit/definitions.h \
+    /usr/include/c++/11/chrono \
+    /usr/include/c++/11/ratio \
+    /usr/include/c++/11/bits/parse_numbers.h

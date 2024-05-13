@@ -522,7 +522,10 @@ CMakeFiles/cudaFPW.dir/main.cu.o: ../main.cu \
   /usr/include/c++/11/ctime \
   /home/swhitebook/other-packages/Gpufit/Gpufit/gpufit.h \
   /home/swhitebook/other-packages/Gpufit/Gpufit/constants.h \
-  /home/swhitebook/other-packages/Gpufit/Gpufit/definitions.h
+  /home/swhitebook/other-packages/Gpufit/Gpufit/definitions.h \
+  /usr/include/c++/11/chrono \
+  /usr/include/c++/11/ratio \
+  /usr/include/c++/11/bits/parse_numbers.h
 
 CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o: ../periodograms/FPW/cpu_functions.cpp \
   /usr/include/stdc-predef.h \
@@ -1688,6 +1691,10 @@ CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o: ../periodograms/FPW/wrapp
 
 ../periodograms/FPW/cpu_functions.cpp:
 
+/usr/include/c++/11/bits/parse_numbers.h:
+
+/usr/include/c++/11/ratio:
+
 /home/swhitebook/other-packages/Gpufit/Gpufit/definitions.h:
 
 /usr/include/c++/11/ctime:
@@ -2293,6 +2300,8 @@ CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o: ../periodograms/FPW/wrapp
 ../periodograms/FPW/wrappers.cu:
 
 /usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
+
+/usr/include/c++/11/chrono:
 
 /usr/include/x86_64-linux-gnu/bits/wordsize.h:
 
