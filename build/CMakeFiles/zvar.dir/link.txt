@@ -1,1 +1,0 @@
-/usr/bin/c++ -g -rdynamic CMakeFiles/zvar.dir/main.cpp.o -o zvar 
