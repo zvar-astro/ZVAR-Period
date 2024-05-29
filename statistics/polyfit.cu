@@ -22,8 +22,8 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
     }
 
     // Define other Gpufit parameters
-    float tolerance = 1e-3;
-    int max_n_iterations = 1000; // we care more about speed than accuracy, so n_iter is low.
+    float tolerance = 1e-4;
+    int max_n_iterations = 10000; // we care more about speed than accuracy, so n_iter is low.
     int estimator_id = LSE;  // Least squares estimator
     float* initial_parameters = new float[N_curves * N_parameters];
     std::fill_n(initial_parameters, N_curves * N_parameters, 1.0f);
