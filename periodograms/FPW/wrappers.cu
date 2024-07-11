@@ -118,7 +118,8 @@ MatrixXf cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf fr
 
 /*Multibin FPW. Instead of passing a single integer value of N_bins we pass an array of N_bins values starting with the largest value.
 The following values must be factors of N_bins[0]. N_samples is then the length of N_bins and determines how much memory must be allocated.*/
-float* cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf freqs_vec,
+float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
+                    int N_dat, int N_curves, int N_freqs,
                     int* N_bins, int N_freqs_batch, int N_curves_batch, int N_samples) {
 
     //time stuff
@@ -127,19 +128,12 @@ float* cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf freq
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
-    int N_dat = t_vec.size();
-    int N_curves = y_mat.cols();
-    int N_freqs = freqs_vec.size();
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
         N_bins_total += N_bins[i];
     }
     printf("N_dat: %d, N_curves: %d, N_freqs: %d\n", N_dat, N_curves, N_freqs);
     printf("N_bins_total: %d\n", N_bins_total);
-
-    // Convert to arrays
-    float* t_host = t_vec.data();
-    float* freqs_host = freqs_vec.data();
 
     // Allocate memory for device arrays
     float* t;
@@ -177,12 +171,15 @@ float* cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf freq
     float* periodograms = new float[N_curves * N_freqs * N_samples];
 
     //copy y and ivar to device
-    float* y_host = y_mat.data();
-    float* dy_host = dy_mat.data();
+    // float* y_host = y_mat.data();
+    // float* dy_host = dy_mat.data();
     float* ivar_host = new float[N_dat * N_curves];
     for (int i = 0; i < N_curves * N_dat; i++) {
         ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
     }
+
+    //diagnostics
+    cout << "periodogram size " << N_curves * N_freqs * N_samples << endl;
 
     cudaEventRecord(start);
     // Run kernels for each batch of frequencies over all light curves
@@ -226,6 +223,8 @@ float* cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf freq
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
     totalTime += milliseconds;
+    
+    cout << "total time: " << totalTime << endl;
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
