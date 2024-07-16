@@ -1,3 +1,11 @@
-/CMakeLists.txt
+# Ignore CMake build directory
 /build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+/CMakeLists.txt
 /main.cu
+
+# Ignore VSCode settings
+.vscode/

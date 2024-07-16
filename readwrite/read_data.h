@@ -4,6 +4,7 @@
 #include <numeric>
 #include <iomanip>
 #include <tuple>
+#include <algorithm>
 #include "hdf5_utils.h"
 
 std::string writeFilePath(const int field, const int ccd, const int quad, const std::string &filter);

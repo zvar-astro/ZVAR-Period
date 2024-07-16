@@ -3,7 +3,7 @@
 std::string writeFilePath(const int field, const int ccd, const int quad, const std::string &filter) {
     std::stringstream ss;
     std::stringstream ssr;
-    ss << "/home/swhitebook/data/";
+    ss << "/data/swhitebook/Downloads/";
     ss << std::setfill('0') << std::setw(4) << "data_";
     ss << std::setfill('0') << std::setw(4) << field << "_";
     ss << std::setfill('0') << std::setw(2) << ccd << "_";
@@ -30,10 +30,10 @@ std::tuple<unsigned int, unsigned int, std::vector<float>> initializeFrameData(c
     check_status(status);
 
     // Subtract mean BJD and convert to float
-    double bjdref = std::accumulate(bjd.begin(), bjd.end(), 0.0) / 
-                    static_cast<double>(NEXP);
+    double bjdref = std::min_element(bjd.begin(), bjd.end())[0];
     for (int i = 0; i < NEXP; i++) {
     time[i] = static_cast<float>(bjd[i] - bjdref);
+    time[i] *= 86400.0f; //convert to seconds
     }
     return std::make_tuple(NEXP, NSRC, time);
 }

@@ -1,7 +1,12 @@
 {
-    // "cmake.configureSettings": {
-    //     "CMAKE_BUILD_TYPE": "Release"
-    // },
+    "cmake.cmakePath": "/data/swhitebook/cmake/bin/cmake",
+    "cmake.configureSettings": {
+        "CMAKE_BUILD_TYPE": "Release",
+        // "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++",
+        "CMAKE_CUDA_COMPILER": "/usr/local/cuda-12.5/bin/nvcc",
+        "CMAKE_MAKE_PROGRAM": "/data/swhitebook/ninja/ninja"
+    },
     "files.associations": {
         "*.rmd": "markdown",
         "array": "cpp",
@@ -69,6 +74,13 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
-        "codecvt": "cpp"
-    }
+        "codecvt": "cpp",
+        "bitset": "cpp",
+        "optional": "cpp",
+        "__nullptr": "cpp",
+        "__locale": "cpp",
+        "dense": "cpp"
+    },
+    "cmake.generator": "Ninja",
+    "cmake.configureOnOpen": true
 }
