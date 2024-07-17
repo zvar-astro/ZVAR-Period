@@ -22,6 +22,7 @@ typedef struct sources {
 
 typedef struct sourcedata {
   float flux;
+  float fluxErr;
 } sourcedata;
 
 
@@ -58,13 +59,16 @@ int get_sources(hid_t, unsigned long*, int, int);
 // given just the HDF5 filename rather than a table object
 int get_sources_wrapper(std::string, unsigned long*, int, int);
 
+// Function to read chunk of PANSTARRS IDs from sources table
+int get_sources_chunk(std::string, unsigned long*, unsigned long, unsigned long);
+
 
 // Function to read data from sourcedata table
 int get_sourcedata(hid_t, float*, int);
 
 
 // Function to read chunk of data from sourcedata table
-int get_sourcedata_chunk(std::string, float*, unsigned long, unsigned long, unsigned long, unsigned long);
+int get_sourcedata_chunk(std::string, float*, float*, unsigned long, unsigned long, unsigned long, unsigned long);
 
 
 // Function to read sourcedata for list of object IDs from two HDF5 files

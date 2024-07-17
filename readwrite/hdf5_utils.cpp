@@ -158,6 +158,67 @@ int get_sources_wrapper(std::string filename,
 }
 
 
+int get_sources_chunk(std::string filename, unsigned long *psids, unsigned long objstart, unsigned long objnum) {
+
+  /* 
+  Function to read a contiguous chunk of data from the sources table
+  Used to return Pan-STARRS IDs for a subset of objects
+  
+  filename = Name of HDF5 file
+  psids    = Array pointer to store Pan-STARRS IDs
+  objstart = Object number at which to start reading data
+  objnum   = Number of objects to read
+  */
+
+  int status;
+  sources *data;
+  hid_t file, group, table;
+  hid_t dataspace, memspace;
+
+  // Open HDF5 files
+  file = H5Fopen(filename.c_str(),H5F_ACC_RDONLY,H5P_DEFAULT);
+  group = H5Gopen2(file,"/data",H5P_DEFAULT);
+
+  // Open table
+  table = H5Dopen2(group,"/data/sources",H5P_DEFAULT);
+
+  // Define hyperslab in the dataset
+  dataspace = H5Dget_space(table);
+  hsize_t offset[] = {objstart};
+  hsize_t count[] = {objnum};
+  status = H5Sselect_hyperslab(dataspace,H5S_SELECT_SET,offset,NULL,count,NULL);
+
+  // Define memory hyperslap
+  hsize_t dim[] = {objnum};
+  memspace = H5Screate_simple(1,dim,NULL);
+  hsize_t offset_out[] = {0};
+  hsize_t count_out[] = {objnum};
+  status = H5Sselect_hyperslab(memspace,H5S_SELECT_SET,offset_out,NULL,count_out,NULL);
+
+  // Read data from table
+  hid_t sources_tid = H5Tcreate(H5T_COMPOUND,sizeof(sources));
+  H5Tinsert(sources_tid,"gaia_id",HOFFSET(sources,psid),H5T_NATIVE_ULONG);
+  data = (sources *) malloc(sizeof(sources)*objnum);
+  status = H5Dread(table,sources_tid,memspace,dataspace,H5P_DEFAULT,data);
+
+  // Populate psid array with values
+  for (int i = 0; i < objnum; i++) {
+    psids[i] = data[i].psid;
+  }
+
+  // Deallocate memory
+  free(data);
+  H5Sclose(memspace);
+
+  // Close files
+  H5Dclose(table);
+  H5Gclose(group);
+  H5Fclose(file);
+
+  return status;
+}
+
+
 int get_sourcedata(hid_t table, float *flux, int N) {
   
   /* Function that grabs flux values for all
@@ -190,7 +251,7 @@ int get_sourcedata(hid_t table, float *flux, int N) {
 
 
 
-int get_sourcedata_chunk(std::string filename, float *flux, unsigned long objstart, 
+int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, unsigned long objstart, 
   unsigned long objnum, unsigned long N, unsigned long numentry) {
 
   /* 
@@ -234,6 +295,7 @@ int get_sourcedata_chunk(std::string filename, float *flux, unsigned long objsta
   // Read data from table
   hid_t sourcedata_tid = H5Tcreate(H5T_COMPOUND,sizeof(sourcedata));
   H5Tinsert(sourcedata_tid,"flux",HOFFSET(sourcedata,flux),H5T_NATIVE_FLOAT);
+  H5Tinsert(sourcedata_tid,"flux_err",HOFFSET(sourcedata,fluxErr),H5T_NATIVE_FLOAT);
   data = (sourcedata *) malloc(sizeof(sourcedata)*objnum*N);
   status = H5Dread(table,sourcedata_tid,memspace,dataspace,H5P_DEFAULT,data);
 
@@ -242,9 +304,11 @@ int get_sourcedata_chunk(std::string filename, float *flux, unsigned long objsta
     for (int j = 0; j < N; j++) {
       if (std::isnan(data[i*N+j].flux)) {
         flux[i*numentry+j] = 0.0f;
+        fluxErr[i*numentry+j] = INFINITY;
       }
       else {
         flux[i*numentry+j] = data[i*N+j].flux;
+        fluxErr[i*numentry+j] = data[i*N+j].fluxErr;
       }
     }
   }
