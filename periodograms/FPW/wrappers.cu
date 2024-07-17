@@ -82,7 +82,6 @@ MatrixXf cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf fr
 
             // Map the result to an Eigen vector and store it in the periodograms matrix
             for (int j = 0; j < N_curves_current; j++) {
-                // periodograms.row(k + j).segment(i, N_freqs_current) = Eigen::Map<VectorXf>(deltaChi_host + j * N_freqs_current, N_freqs_current);
                 periodograms.col(k + j).segment(i, N_freqs_current) = Eigen::Map<VectorXf>(deltaChi_host + j * N_freqs_current, N_freqs_current);
             }
         }
@@ -162,7 +161,7 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
     dim3 gridSizeChi((N_freqs_batch + blockSizeChi.x - 1) / blockSizeChi.x, (N_curves + blockSizeChi.y - 1) / blockSizeChi.y);
     size_t sharedMemoryChi = 2 * N_bins[0] * blockSizeChi.x * blockSizeChi.y * sizeof(float);
 
-    cout << "sharedMemoryChi: " << sharedMemoryChi / 1024 << endl;
+    // cout << "sharedMemoryChi: " << sharedMemoryChi / 1024 << endl;
 
     // Allocate memory for host array to hold the result
     float* deltaChi_host = new float[N_curves_batch * N_freqs_batch * N_samples];
@@ -171,8 +170,6 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
     float* periodograms = new float[N_curves * N_freqs * N_samples];
 
     //copy y and ivar to device
-    // float* y_host = y_mat.data();
-    // float* dy_host = dy_mat.data();
     float* ivar_host = new float[N_dat * N_curves];
     for (int i = 0; i < N_curves * N_dat; i++) {
         ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);

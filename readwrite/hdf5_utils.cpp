@@ -682,3 +682,117 @@ void normalizeLC_dualband(float *flux, int N_s, int N1, int N2, int numentry) {
   std::vector<float>().swap(deviations2);
 
 }
+
+void writeResults(std::string filename, unsigned long* psids, float* bestFreqs, float* significance, int N_curves, int total_curves, int N_samples) {
+    // Create a new HDF5 file
+    hid_t file_id = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+
+    // Define the maximum dimensions for each dataset
+    hsize_t max_dims_psids[1] = {static_cast<hsize_t>(total_curves)};
+    hsize_t max_dims_bestFreqs[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples)};
+    hsize_t max_dims_significance[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples)};
+
+    // Define the dimensions for each dataset
+    hsize_t dims_psids[1] = {static_cast<hsize_t>(N_curves)};
+    hsize_t dims_bestFreqs[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+    hsize_t dims_significance[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+
+    // Create dataspaces for each dataset with the maximum dimensions
+    hid_t dataspace_psids_max = H5Screate_simple(1, max_dims_psids, NULL);
+    hid_t dataspace_bestFreqs_max = H5Screate_simple(1, max_dims_bestFreqs, NULL);
+    hid_t dataspace_significance_max = H5Screate_simple(1, max_dims_significance, NULL);
+
+    // Create datasets
+    hid_t psids_dataset_id = H5Dcreate(file_id, "psids", H5T_NATIVE_ULONG, dataspace_psids_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t bestFreqs_dataset_id = H5Dcreate(file_id, "bestFreqs", H5T_NATIVE_FLOAT, dataspace_bestFreqs_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t significance_dataset_id = H5Dcreate(file_id, "significance", H5T_NATIVE_FLOAT, dataspace_significance_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    // Create dataspaces for the actual data to be written
+    hid_t dataspace_psids = H5Screate_simple(1, dims_psids, NULL);
+    hid_t dataspace_bestFreqs = H5Screate_simple(1, dims_bestFreqs, NULL);
+    hid_t dataspace_significance = H5Screate_simple(1, dims_significance, NULL);
+
+    // Define the hyperslab in the file dataspace for psids
+    hsize_t start_psids[1] = {0};
+    hsize_t count_psids[1] = {static_cast<hsize_t>(N_curves)};
+    H5Sselect_hyperslab(dataspace_psids_max, H5S_SELECT_SET, start_psids, NULL, count_psids, NULL);
+
+    // Define the hyperslab in the file dataspace for bestFreqs
+    hsize_t start_bestFreqs[1] = {0};
+    hsize_t count_bestFreqs[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+    H5Sselect_hyperslab(dataspace_bestFreqs_max, H5S_SELECT_SET, start_bestFreqs, NULL, count_bestFreqs, NULL);
+
+    // Define the hyperslab in the file dataspace for significance
+    hsize_t start_significance[1] = {0};
+    hsize_t count_significance[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+    H5Sselect_hyperslab(dataspace_significance_max, H5S_SELECT_SET, start_significance, NULL, count_significance, NULL);
+
+    // Write data to datasets
+    H5Dwrite(psids_dataset_id, H5T_NATIVE_ULONG, dataspace_psids, dataspace_psids_max, H5P_DEFAULT, psids);
+    H5Dwrite(bestFreqs_dataset_id, H5T_NATIVE_FLOAT, dataspace_bestFreqs, dataspace_bestFreqs_max, H5P_DEFAULT, bestFreqs);
+    H5Dwrite(significance_dataset_id, H5T_NATIVE_FLOAT, dataspace_significance, dataspace_significance_max, H5P_DEFAULT, significance);
+
+    // Close resources
+    H5Sclose(dataspace_psids);
+    H5Sclose(dataspace_bestFreqs);
+    H5Sclose(dataspace_significance);
+    H5Sclose(dataspace_psids_max);
+    H5Sclose(dataspace_bestFreqs_max);
+    H5Sclose(dataspace_significance_max);
+    H5Dclose(psids_dataset_id);
+    H5Dclose(bestFreqs_dataset_id);
+    H5Dclose(significance_dataset_id);
+    H5Fclose(file_id);
+}
+
+void appendResults(std::string filename, unsigned long* psids, float* bestFreqs, float* significance, int N_curves, int N_samples, unsigned long offset) {
+    // Open the existing HDF5 file
+    hid_t file_id = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+
+    // Open the datasets
+    hid_t psids_dataset_id = H5Dopen(file_id, "psids", H5P_DEFAULT);
+    hid_t bestFreqs_dataset_id = H5Dopen(file_id, "bestFreqs", H5P_DEFAULT);
+    hid_t significance_dataset_id = H5Dopen(file_id, "significance", H5P_DEFAULT);
+
+    // Define the dimensions for the data to be written
+    hsize_t dims_psids[1] = {static_cast<hsize_t>(N_curves)};
+    hsize_t dims_bestFreqs[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+    hsize_t dims_significance[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+
+    // Define the offset for the hyperslab
+    hsize_t offset_psids[1] = {static_cast<hsize_t>(offset)};
+    hsize_t offset_bestFreqs[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples)};
+    hsize_t offset_significance[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples)};
+
+    // Define the file dataspace and select the hyperslab
+    hid_t file_dataspace_psids = H5Dget_space(psids_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_psids, H5S_SELECT_SET, offset_psids, NULL, dims_psids, NULL);
+
+    hid_t file_dataspace_bestFreqs = H5Dget_space(bestFreqs_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_bestFreqs, H5S_SELECT_SET, offset_bestFreqs, NULL, dims_bestFreqs, NULL);
+
+    hid_t file_dataspace_significance = H5Dget_space(significance_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_significance, H5S_SELECT_SET, offset_significance, NULL, dims_significance, NULL);
+
+    // Define the memory dataspace
+    hid_t mem_dataspace_psids = H5Screate_simple(1, dims_psids, NULL);
+    hid_t mem_dataspace_bestFreqs = H5Screate_simple(1, dims_bestFreqs, NULL);
+    hid_t mem_dataspace_significance = H5Screate_simple(1, dims_significance, NULL);
+
+    // Write data to the selected hyperslab
+    H5Dwrite(psids_dataset_id, H5T_NATIVE_ULONG, mem_dataspace_psids, file_dataspace_psids, H5P_DEFAULT, psids);
+    H5Dwrite(bestFreqs_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_bestFreqs, file_dataspace_bestFreqs, H5P_DEFAULT, bestFreqs);
+    H5Dwrite(significance_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_significance, file_dataspace_significance, H5P_DEFAULT, significance);
+
+    // Close resources
+    H5Sclose(mem_dataspace_psids);
+    H5Sclose(mem_dataspace_bestFreqs);
+    H5Sclose(mem_dataspace_significance);
+    H5Sclose(file_dataspace_psids);
+    H5Sclose(file_dataspace_bestFreqs);
+    H5Sclose(file_dataspace_significance);
+    H5Dclose(psids_dataset_id);
+    H5Dclose(bestFreqs_dataset_id);
+    H5Dclose(significance_dataset_id);
+    H5Fclose(file_id);
+}

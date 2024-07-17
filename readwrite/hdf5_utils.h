@@ -90,5 +90,11 @@ void normalizeLC(float*, int, int);
 // Function to normalize flux values for dual-band data
 void normalizeLC_dualband(float*, int, int, int, int);
 
+// Function to create a new HDF5 file to store periodogram results
+void writeResults(std::string, unsigned long*, float*, float*, int, int, int);
+
+// Function to append periodogram results to an existing HDF5 file
+void appendResults(std::string, unsigned long*, float*, float*, int, int, unsigned long);
+
 
 #endif
