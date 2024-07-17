@@ -205,7 +205,7 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
             for (int k = 0; k < N_samples; k++) {
                 for (int l = 0; l < N_curves_current; l++) {
                     memcpy(
-                        periodograms + k * N_curves * N_freqs + (j + l) * N_freqs + i,  // Destination
+                        periodograms + l * N_samples * N_freqs + k * N_freqs + i,  // Destination
                         deltaChi_host + k * N_curves_current * N_freqs_current + l * N_freqs_current,  // Source
                         N_freqs_current * sizeof(float)  // Number of bytes to copy
                     );
