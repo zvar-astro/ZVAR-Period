@@ -1,0 +1,15 @@
+# ninja log v5
+2	1454	1721252556419900840	CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o	6c7f1b41362d949e
+2	7265	1721252561407880329	CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o	ff1c3828455ade8f
+7105	7301	1721254208979048190	CMakeFiles/cudaFPW.dir/cmake_device_link.o	90a9a2d7e70a5702
+4	6207	1721254207879053265	CMakeFiles/cudaFPW.dir/runFile.cu.o	5b978a8dd379b6e3
+1	588	1721324585890584955	build.ninja	9d33de34409c2bf0
+1	311	1721252555279905527	CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o	f4a7fb69a0c957f0
+7301	7445	1721254209123047525	cudaFPW	d7e289807de490c
+4	6013	1721254207683054170	CMakeFiles/cudaFPW.dir/main.cu.o	9e066798db940f3
+2	845	1721252555811903340	CMakeFiles/cudaFPW.dir/statistics/curve_statistics.cu.o	89c95d9f6ee3cb02
+1	2136	1721252557099898043	CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o	54b872fb6c4bdaca
+4	669	1721254202351078780	CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o	f87af774e14dbf1b
+4	632	1721253539906246305	CMakeFiles/cudaFPW.dir/readwrite/read_data.cpp.o	f5989fbf728ec65a
+2	1608	1721252556575900198	CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o	a8f5cc15a4ef4c1f
+3	943	1721252555911902929	CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o	5249bf027daf1a88
