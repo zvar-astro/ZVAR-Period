@@ -37,7 +37,6 @@ def run_schuster(field, ccd, quad, band, device):
     # Construct the command with the given arguments
     command = [
         './build/schuster',  # Path to the executable
-        '-v', # verbose option
         str(field),
         str(ccd),
         str(quad),
