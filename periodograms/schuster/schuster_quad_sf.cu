@@ -815,6 +815,10 @@ int main(int argc, char const *argv[]) {
     std::cout <<  std::chrono::duration_cast<std::chrono::seconds>(t_prog_end - t_prog_start).count();
     std::cout << " sec\n" << std::endl;
   }
+  else {
+    std::cout << "  Total execution time: ";
+    std::cout << std::chrono::duration_cast<std::chrono::seconds>(t_prog_end - t_prog_start).count();
+  }
 
 
   return 0;
