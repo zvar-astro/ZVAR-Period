@@ -6,6 +6,7 @@
 #include <numeric>
 #include <algorithm>
 #include <functional>
+#include <chrono>
 #include "peak_utils.h"
 
 
@@ -128,7 +129,10 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 
 std::vector<int> find_peaks(const std::vector<float> x, 
                             const int Ntop,
-                            const int distance) {
+                            const int distance,
+                            const float mean,
+                            const float stdev,
+                            const float threshold) {
 
     /*
     Function to find peaks in a 1D array of values
@@ -138,9 +142,12 @@ std::vector<int> find_peaks(const std::vector<float> x,
     point as a peak whose two neighboring points are lesser
     values.
 
-    x        = 1D array of values
-    Ntop     = number of peaks to return
-    distance = minimum distance between neighboring peaks
+    x         = 1D array of values
+    Ntop      = number of peaks to return
+    distance  = minimum distance between neighboring peaks
+    mean      = periodogram mean
+    stdev     = periodogram standard deviation
+    threshold = S/N threshold for a peak [ S/N = (height-mean) / stdev ]
     */
 
     std::vector<int> midpoints;
@@ -162,7 +169,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
             }
 
             // Maxima is found if next unequal sample is smaller than x[i]
-            if (x[i_ahead] < x[i]) {
+            if (x[i_ahead] < x[i] && (x[i]-mean)/stdev > threshold) {
                 midpoints.push_back((i + i_ahead - 1) / 2);
                 i = i_ahead;
                 numpeaks += 1;
@@ -170,6 +177,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
         }
         i += 1;
     }
+    // std::cout << "      Num Peaks Inits = " << numpeaks << std::endl;
     
     // Create vector to store indices of the "Ntop" highest peaks
     std::vector<int> itop(Ntop);
@@ -187,7 +195,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
        height, other peaks that are within "distance"
        samples of a larger peak will be discarded.
     */
-     
+
     // Create a vector containing peak heights
     std::vector<float> peak_heights(numpeaks,0.0f);
     for (int i = 0; i < numpeaks; i++) {
@@ -207,7 +215,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
     );
 
     // Sort priority_to_position vector in ascending order of peak heights
-    std::sort(
+    std::stable_sort(
         priority_to_position.begin(), 
         priority_to_position.end(),
         [&peak_heights](int i1, int i2) { return peak_heights[i1] < peak_heights[i2]; }

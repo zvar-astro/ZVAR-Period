@@ -36,7 +36,10 @@ std::vector<int> flagTerrestrialFreq(
 std::vector<int> find_peaks(
   const std::vector<float>, // x
   const int,                // Ntop
-  const int                 // distance
+  const int,                // distance
+  const float,              // mean
+  const float,              // stdev
+  const float               // theshold
 );
 
 #endif
