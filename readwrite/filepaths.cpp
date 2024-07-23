@@ -16,6 +16,15 @@ std::string writeOutputFilePath(const int field, const int ccd, const int quad, 
     std::stringstream ss;
     ss << "/data/zvar/zvar_results/";
     ss << std::setfill('0') << std::setw(4) << field << "/";
+
+    //Check that the directory exists
+    std::string directory = ss.str();
+
+    // Check if the directory exists
+    if (!std::filesystem::exists(directory)) {
+        throw std::runtime_error("Directory does not exist: " + directory);
+    }
+
     ss << std::setfill('0') << std::setw(7) << "results_";
     ss << std::setfill('0') << std::setw(4) << field << "_";
     ss << std::setfill('0') << std::setw(2) << ccd << "_";
