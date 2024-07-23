@@ -5,6 +5,9 @@
 #include <iomanip>
 #include <tuple>
 #include <algorithm>
+#include <filesystem>
+#include <stdexcept>
+#include <sstream>
 #include "hdf5_utils.h"
 
 std::string writeInputFilePath(const int field, const int ccd, const int quad, const std::string &filter);

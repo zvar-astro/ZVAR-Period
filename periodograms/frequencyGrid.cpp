@@ -47,5 +47,9 @@ std::vector<double> freq_grid(const std::vector<double>& t, double fmin, double 
         fgrid.push_back(f);
     }
 
+    //Free vectors from memory
+    std::vector<double>().swap(sorted_t);
+    std::vector<double>().swap(diff_t);
+
     return fgrid;
 }

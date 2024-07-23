@@ -4,7 +4,6 @@ void runFile(int field, int ccd, int quad, std::string filter) {
 
     // Write the file path
     string hdf_filename = writeInputFilePath(field, ccd, quad, filter);
-    cout << hdf_filename << endl;
 
     unsigned int NEXP, NSRC;
     vector<float> time;
@@ -90,8 +89,10 @@ void runFile(int field, int ccd, int quad, std::string filter) {
         }
 
         // Free memory
+        delete[] indices;
         delete[] bestFreqs;
         delete[] signifiance;
+        delete[] periodograms;
     }
 
     // Free vectors from memory
@@ -99,5 +100,8 @@ void runFile(int field, int ccd, int quad, std::string filter) {
     std::vector<float>().swap(flux);
     std::vector<float>().swap(fluxErr);
     std::vector<float>().swap(fgrid);
+    std::vector<unsigned long>().swap(psids);
+    std::vector<double>().swap(time_double);
+    std::vector<double>().swap(fgrid_double);
     delete[] N_bins;
 }

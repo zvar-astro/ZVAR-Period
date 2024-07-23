@@ -3,11 +3,11 @@ import subprocess
 import threading
 import queue
 import sys
+import time
 
-def run_cudaFPW(field, ccd, quad, band, device):
-    # Construct the command with the given arguments
+def run_cudaFPW(field, ccd, quad, band, device, stop_event):
     command = [
-        './build/cudaFPW',  # Path to the executable
+        './build/cudaFPW',
         str(field),
         str(ccd),
         str(quad),
@@ -16,27 +16,25 @@ def run_cudaFPW(field, ccd, quad, band, device):
     ]
 
     try:
-        # Run the command and capture the output in real-time
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        # Print stdout and stderr as they come out
         for line in process.stdout:
             print(line, end='')
         for line in process.stderr:
             print(line, end='')
 
-        # Wait for the process to complete
         process.wait()
 
         if process.returncode != 0:
             print(f"Command failed with return code {process.returncode}")
+            stop_event.set()
     except Exception as e:
         print(f"An error occurred: {e}")
+        stop_event.set()
 
-def run_schuster(field, ccd, quad, band, device):
-    # Construct the command with the given arguments
+def run_schuster(field, ccd, quad, band, device, stop_event):
     command = [
-        './build/schuster',  # Path to the executable
+        './build/schuster',
         str(field),
         str(ccd),
         str(quad),
@@ -45,69 +43,72 @@ def run_schuster(field, ccd, quad, band, device):
     ]
 
     try:
-        # Run the command and capture the output in real-time
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        # Print stdout and stderr as they come out
         for line in process.stdout:
             print(line, end='')
         for line in process.stderr:
             print(line, end='')
 
-        # Wait for the process to complete
         process.wait()
 
         if process.returncode != 0:
             print(f"Command failed with return code {process.returncode}")
+            stop_event.set()
     except Exception as e:
         print(f"An error occurred: {e}")
+        stop_event.set()
 
+def worker(task_queue, device, algorithm, stop_event):
+    while not task_queue.empty() and not stop_event.is_set():
+        try:
+            field, ccd, quad, band = task_queue.get_nowait()
+        except queue.Empty:
+            break
 
-def worker(task_queue, device, algorithm):
-    while not task_queue.empty():
-        field, ccd, quad, band = task_queue.get()
         if algorithm == 'fpw':
-            run_cudaFPW(field, ccd, quad, band, device)
+            run_cudaFPW(field, ccd, quad, band, device, stop_event)
         elif algorithm == 'schuster':
-            run_schuster(field, ccd, quad, band, device)
+            run_schuster(field, ccd, quad, band, device, stop_event)
         task_queue.task_done()
 
 if __name__ == "__main__":
-    # Check for the correct number of arguments
     if len(sys.argv) != 3:
         print("Usage: python runField.py <field> <algorithm>")
         sys.exit(1)
     
-    #Take field as argument
     field = sys.argv[1]
     algorithm = sys.argv[2]
 
-    # Check that algorithm is an allowed value
-    if algorithm not in ['schuster','fpw']:
-        print("ERROR: algrotihm must be one of 'schuster' or 'fpw'")
+    if algorithm not in ['schuster', 'fpw']:
+        print("ERROR: algorithm must be one of 'schuster' or 'fpw'")
         print("Usage: python runField.py <field> <algorithm>")
         sys.exit(1)
     
-    # Create a queue to hold the tasks
     task_queue = queue.Queue()
     
-    # Populate the queue with tasks, without device as it's now handled by the worker
     for band in ['g', 'r']:
         for ccd in range(1, 17):
             for quad in range(1, 5):
                 task_queue.put((field, ccd, quad, band))
     
-    # Create and start worker threads, each with a unique device ID
     num_threads = 4
     threads = []
+    stop_event = threading.Event()
+
     for i in range(num_threads):
-        thread = threading.Thread(target=worker, args=(task_queue, i, algorithm))  # Pass device ID as argument to worker
+        thread = threading.Thread(target=worker, args=(task_queue, i, algorithm, stop_event))
         thread.start()
         threads.append(thread)
     
-    # Wait for all tasks to be processed
-    task_queue.join()
+    while not task_queue.empty():
+        if stop_event.is_set():
+            break
+        time.sleep(1)  # Sleep for a short duration to avoid busy-waiting
     
-    # Wait for all threads to complete
     for thread in threads:
         thread.join()
+
+    if stop_event.is_set():
+        print("An error occurred in one of the threads. Exiting with error code.")
+        sys.exit(1)
