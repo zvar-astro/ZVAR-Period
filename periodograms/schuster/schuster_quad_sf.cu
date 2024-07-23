@@ -232,7 +232,6 @@ int main(int argc, char const *argv[]) {
   ssp << std::setfill('0') << std::setw(2) << ccd << "_";
   ssp << quad << "_z" << filter << ".dat";
   std::string peakfilename = ssp.str();
-  std::cout << peakfilename << std::endl;
 
   // Create directories if they don't already exist
   fs::create_directory(period_path); // create PERIOD_DIR
@@ -370,7 +369,6 @@ int main(int argc, char const *argv[]) {
   // Determine frequency grid padding
   NFREQ = std::accumulate(freq_flags.begin(), freq_flags.end(), 0);
   long int NFREQ_PADDED = NFREQ + THREADS - NFREQ % THREADS;
-  std::cout << freq_flags.size() - NFREQ << " frequencies removed" << std::endl;
 
   // Add zero padding to frequency grid
   for (int i = NEXP; i < NFREQ_PADDED; i++) {
@@ -544,13 +542,17 @@ int main(int argc, char const *argv[]) {
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Kernel Execution
   
-  std::cout << "\n  Kernel Execution" << std::endl;
-  std::cout << "  -------------------------------------" << std::endl;
+  if (!quiet) {
+    std::cout << "\n  Kernel Execution" << std::endl;
+    std::cout << "  -------------------------------------" << std::endl;
+  }
 
   // First loop iterates over frequency blocks
   for (unsigned long j = 0; j < NCHUNK_SINCOS; j++) {
 
-    std::cout << "  Processing frequency chunk " << j+1 << "/" << NCHUNK_SINCOS << "\n";
+    if (!quiet) {
+      std::cout << "  Processing frequency chunk " << j+1 << "/" << NCHUNK_SINCOS << "\n";
+    }
 
     // Set frequency grid values
     for (int i = 0; i < NFREQ_PADDED; i++) {
@@ -574,7 +576,9 @@ int main(int argc, char const *argv[]) {
       
 
       // Get the range of objects to analyze
-      std::cout << "    Processing source chunk " << k+1 << "/" << NCHUNK_PGRAM << "\n";
+      if (!quiet) {
+        std::cout << "    Processing source chunk " << k+1 << "/" << NCHUNK_PGRAM << "\n";
+      }
       objstart = k * static_cast<unsigned long>(NSRC_PER_CHUNK);
       if (k < NCHUNK_PGRAM-1) {
         objnum = static_cast<unsigned long>(NSRC_PER_CHUNK);
@@ -818,6 +822,7 @@ int main(int argc, char const *argv[]) {
   else {
     std::cout << "  Total execution time: ";
     std::cout << std::chrono::duration_cast<std::chrono::seconds>(t_prog_end - t_prog_start).count();
+    std::cout << " sec\n" << std::endl;
   }
 
 
