@@ -171,33 +171,37 @@ int main(int argc, char const *argv[]) {
 
   // Initial check on argument count
   if (argc < 6) {
-    printf("Usage: %s [-v] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
+    printf("Usage: %s [-v] [-f] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
     return 0;
   }
 
-  // Count required command line args and set verbosity
-  bool quiet = true;
+  // Count required command line args and set verbosity/frequency filter params
+  bool quiet = true;       // Whether to print out verbose info
+  bool filterfreq = false; // Whether to filter out terrestrial frequencies
   int argc_required = 0;
 
   for (int i = 1; i < argc; i++) {
-    if (std::string(argv[i]) != "-v") argc_required++;
-    else quiet = false;
+    if ((std::string(argv[i]) != "-v") && (std::string(argv[i]) != "-f")) {
+       argc_required++;
+    }
+    else if (std::string(argv[i]) == "-v") quiet = false;
+    else if (std::string(argv[i]) == "-f") filterfreq = true;
   }
 
   // Check for correct number of required arguments
   if (argc_required != 5) {
-    printf("Usage: %s [-v] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
+    printf("Usage: %s [-v] [-f] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
     return 0;
   }
 
   // Set field, ccd, quad, and filter params
-  int arg_idx = 0; 
+  int arg_idx = 0;
   int field, ccd, quad;
   int deviceNum;
   std::string filter;
 
   for (int i = 1; i < argc; i++) {
-    if (std::string(argv[i]) != "-v") {
+    if ((std::string(argv[i]) != "-v") && (std::string(argv[i]) != "-f")) {
       if (arg_idx == 0) field = std::stoi(argv[i]);
       if (arg_idx == 1) ccd = std::stoi(argv[i]);
       if (arg_idx == 2) quad = std::stoi(argv[i]);
@@ -206,7 +210,7 @@ int main(int argc, char const *argv[]) {
       arg_idx++;
     }
   }
-  
+
 
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Define some filenames
@@ -220,7 +224,7 @@ int main(int argc, char const *argv[]) {
   ssh << quad << "_z" << filter << ".h5";
   std::string hdf_filename = ssh.str();
 
-  // Define directories/filename to store 
+  // Define directories/filename to store
   // Schuster Periodogram (SP) period detections
   std::stringstream ssp;
   ssp << PERIOD_DIR;
@@ -357,17 +361,24 @@ int main(int argc, char const *argv[]) {
   }
 
   // Get indices to exclude terrestrial frequencies
-  std::vector<int> freq_flags = flagTerrestrialFreq(h_grid_full.data(), NFREQ);
+  if (filterfreq) {
+    std::vector<int> freq_flags = flagTerrestrialFreq(h_grid_full.data(), NFREQ);
 
-  // Erase terrestrial frequencies from vector
-  for (int i = NFREQ-1; i >= 0; i--) {
-    if (freq_flags[i] == 0) {
-      h_grid_full.erase(h_grid_full.begin() + i);
+    // Erase terrestrial frequencies from vector
+    for (int i = NFREQ-1; i >= 0; i--) {
+      if (freq_flags[i] == 0) {
+        h_grid_full.erase(h_grid_full.begin() + i);
+      }
     }
+
+    // Update the NFREQ value
+    NFREQ = std::accumulate(freq_flags.begin(), freq_flags.end(), 0);
+
+    // Clear memory
+    std::vector<int>().swap(freq_flags);
   }
 
   // Determine frequency grid padding
-  NFREQ = std::accumulate(freq_flags.begin(), freq_flags.end(), 0);
   long int NFREQ_PADDED = NFREQ + THREADS - NFREQ % THREADS;
 
   // Add zero padding to frequency grid
@@ -808,7 +819,6 @@ int main(int argc, char const *argv[]) {
   std::vector<float>().swap(all_pgram_means);
   std::vector<float>().swap(all_pgram_stdevs);
   std::vector<float>().swap(final_peaks);
-  std::vector<int>().swap(freq_flags);
 
   // Get timestamp at end of program execution
   std::chrono::steady_clock::time_point t_prog_end = std::chrono::steady_clock::now();
@@ -822,7 +832,7 @@ int main(int argc, char const *argv[]) {
   else {
     std::cout << "  Total execution time: ";
     std::cout << std::chrono::duration_cast<std::chrono::seconds>(t_prog_end - t_prog_start).count();
-    std::cout << " sec\n" << std::endl;
+    std::cout << " sec" << std::endl;
   }
 
 
