@@ -14,20 +14,20 @@ def run_cudaFPW(field, ccd, quad, band, device):
         str(band),
         str(device)
     ]
-    
+
     try:
         # Run the command and capture the output in real-time
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
+
         # Print stdout and stderr as they come out
         for line in process.stdout:
             print(line, end='')
         for line in process.stderr:
             print(line, end='')
-        
+
         # Wait for the process to complete
         process.wait()
-        
+
         if process.returncode != 0:
             print(f"Command failed with return code {process.returncode}")
     except Exception as e:
@@ -43,20 +43,20 @@ def run_schuster(field, ccd, quad, band, device):
         str(band),
         str(device)
     ]
-    
+
     try:
         # Run the command and capture the output in real-time
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
+
         # Print stdout and stderr as they come out
         for line in process.stdout:
             print(line, end='')
         for line in process.stderr:
             print(line, end='')
-        
+
         # Wait for the process to complete
         process.wait()
-        
+
         if process.returncode != 0:
             print(f"Command failed with return code {process.returncode}")
     except Exception as e:
@@ -85,6 +85,7 @@ if __name__ == "__main__":
     # Check that algorithm is an allowed value
     if algorithm not in ['schuster','fpw']:
         print("ERROR: algrotihm must be one of 'schuster' or 'fpw'")
+        print("Usage: python runField.py <field> <algorithm>")
         sys.exit(1)
     
     # Create a queue to hold the tasks
