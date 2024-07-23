@@ -66,7 +66,7 @@ const int MAX_CPU_THREADS = 8;  // Chosen for Feldspar computer with 8-core (16 
 std::string MATCHFILE_DIR = "/data/zvar/matchfiles/";
 
 // Set base directory to save final period detections
-std::string PERIOD_DIR = "/data/zvar/zvar_results/";
+std::string PERIOD_DIR = "/data/zvar/periods/";
 
 
 
@@ -232,6 +232,7 @@ int main(int argc, char const *argv[]) {
   ssp << std::setfill('0') << std::setw(2) << ccd << "_";
   ssp << quad << "_z" << filter << ".dat";
   std::string peakfilename = ssp.str();
+  std::cout << peakfilename << std::endl;
 
   // Create directories if they don't already exist
   fs::create_directory(period_path); // create PERIOD_DIR
