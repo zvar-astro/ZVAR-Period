@@ -64,7 +64,7 @@ void runFile(int field, int ccd, int quad, std::string filter) {
         int N_data = static_cast<int>(NEXP);
         int N_curves = static_cast<int>(objnum);
 
-
+        //Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
         float* periodograms = cudaRunFPW(t_host, flux_host, fluxErr_host, fgrid_host, N_data, N_curves, N_freqs, N_bins, N_freq_batch, N_curves_batch, N_samples);
         int* indices = findArgMaxWrapper(periodograms, N_freqs, N_curves * N_samples);
         
