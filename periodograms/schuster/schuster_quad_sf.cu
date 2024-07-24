@@ -42,8 +42,8 @@ const float pi = 3.141592653589793238462643383279502884197;
 
 // Define Pan-STARRS1 Object ID to save periodogram for
 // const unsigned long objID = 161213227363186155;  // In field 769, ccd 2, quad 3 (Ra-dec = 322.7362802 44.3462273, ZTFJ2130+4420, P=39.3 min)
-const unsigned long objID = 171792853559000466;  // In field 798, ccd 5, quad 4 (Ra-dec = 285.3559167 53.1581306, ZTFJ1901+5309, P=40.6 min)
-const std::string pgfilename = "../data/pgram_obj.dat";
+// const unsigned long objID = 171792853559000466;  // In field 798, ccd 5, quad 4 (Ra-dec = 285.3559167 53.1581306, ZTFJ1901+5309, P=40.6 min)
+// const std::string pgfilename = "../data/pgram_obj.dat";
 
 // Set number of threads along one block dimension,
 // (e.g. one block has THREADS X THREADS total threads)
@@ -58,6 +58,7 @@ const int OFACTOR = 3;       // Over-sampling factor for frequency grid
 // Peak finding parameters
 const int NPEAKS = 25;              // Number of highest peaks to save
 const int DISTANCE = 100 * OFACTOR; // Minimum number of samples required between peaks
+const float THRESHOLD = 5.0f;       // Minimum S/N threshold required for peaks
 
 // Set max number of CPU threads to use during parallelization
 const int MAX_CPU_THREADS = 8;  // Chosen for Feldspar computer with 8-core (16 thread) CPU
@@ -171,37 +172,33 @@ int main(int argc, char const *argv[]) {
 
   // Initial check on argument count
   if (argc < 6) {
-    printf("Usage: %s [-v] [-f] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
+    printf("Usage: %s [-v] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
     return 0;
   }
 
-  // Count required command line args and set verbosity/frequency filter params
-  bool quiet = true;       // Whether to print out verbose info
-  bool filterfreq = false; // Whether to filter out terrestrial frequencies
+  // Count required command line args and set verbosity
+  bool quiet = true;
   int argc_required = 0;
 
   for (int i = 1; i < argc; i++) {
-    if ((std::string(argv[i]) != "-v") && (std::string(argv[i]) != "-f")) {
-       argc_required++;
-    }
-    else if (std::string(argv[i]) == "-v") quiet = false;
-    else if (std::string(argv[i]) == "-f") filterfreq = true;
+    if (std::string(argv[i]) != "-v") argc_required++;
+    else quiet = false;
   }
 
   // Check for correct number of required arguments
   if (argc_required != 5) {
-    printf("Usage: %s [-v] [-f] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
+    printf("Usage: %s [-v] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
     return 0;
   }
 
   // Set field, ccd, quad, and filter params
-  int arg_idx = 0;
+  int arg_idx = 0; 
   int field, ccd, quad;
   int deviceNum;
   std::string filter;
 
   for (int i = 1; i < argc; i++) {
-    if ((std::string(argv[i]) != "-v") && (std::string(argv[i]) != "-f")) {
+    if (std::string(argv[i]) != "-v") {
       if (arg_idx == 0) field = std::stoi(argv[i]);
       if (arg_idx == 1) ccd = std::stoi(argv[i]);
       if (arg_idx == 2) quad = std::stoi(argv[i]);
@@ -210,7 +207,7 @@ int main(int argc, char const *argv[]) {
       arg_idx++;
     }
   }
-
+  
 
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Define some filenames
@@ -224,7 +221,7 @@ int main(int argc, char const *argv[]) {
   ssh << quad << "_z" << filter << ".h5";
   std::string hdf_filename = ssh.str();
 
-  // Define directories/filename to store
+  // Define directories/filename to store 
   // Schuster Periodogram (SP) period detections
   std::stringstream ssp;
   ssp << PERIOD_DIR;
@@ -280,12 +277,12 @@ int main(int argc, char const *argv[]) {
   }
 
   // Clear out periodogram file if it exists
-  const fs::path pgpath{pgfilename};
-  if (fs::exists(pgpath)) {
-    std::ofstream pgfile;
-    pgfile.open(pgfilename);
-    pgfile.close();
-  }
+  // const fs::path pgpath{pgfilename};
+  // if (fs::exists(pgpath)) {
+  //   std::ofstream pgfile;
+  //   pgfile.open(pgfilename);
+  //   pgfile.close();
+  // }
 
   
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -361,25 +358,19 @@ int main(int argc, char const *argv[]) {
   }
 
   // Get indices to exclude terrestrial frequencies
-  if (filterfreq) {
-    std::vector<int> freq_flags = flagTerrestrialFreq(h_grid_full.data(), NFREQ);
+  std::vector<int> freq_flags = flagTerrestrialFreq(h_grid_full.data(), NFREQ);
 
-    // Erase terrestrial frequencies from vector
-    for (int i = NFREQ-1; i >= 0; i--) {
-      if (freq_flags[i] == 0) {
-        h_grid_full.erase(h_grid_full.begin() + i);
-      }
+  // Erase terrestrial frequencies from vector
+  for (int i = NFREQ-1; i >= 0; i--) {
+    if (freq_flags[i] == 0) {
+      h_grid_full.erase(h_grid_full.begin() + i);
     }
-
-    // Update the NFREQ value
-    NFREQ = std::accumulate(freq_flags.begin(), freq_flags.end(), 0);
-
-    // Clear memory
-    std::vector<int>().swap(freq_flags);
   }
 
   // Determine frequency grid padding
+  NFREQ = std::accumulate(freq_flags.begin(), freq_flags.end(), 0);
   long int NFREQ_PADDED = NFREQ + THREADS - NFREQ % THREADS;
+  //std::cout << freq_flags.size() - NFREQ << " frequencies removed" << std::endl;
 
   // Add zero padding to frequency grid
   for (int i = NEXP; i < NFREQ_PADDED; i++) {
@@ -548,10 +539,19 @@ int main(int argc, char const *argv[]) {
   std::vector<float> all_peak_heights(NSRC * Npeakcol, 0.0f);
   std::vector<float> all_pgram_means(NSRC * NCHUNK_SINCOS, 0.0f); 
   std::vector<float> all_pgram_stdevs(NSRC * NCHUNK_SINCOS, 0.0f); 
+  std::chrono::steady_clock::time_point t_preproc_end = std::chrono::steady_clock::now();
+  int preproc_execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(t_preproc_end - t_prog_start).count();
 
 
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Kernel Execution
+
+  // Create parameters to store execution times
+  int coeff_execution_time = 0; // Milliseconds
+  int lcurv_execution_time = 0; // Milliseconds
+  int pgram_execution_time = 0; // Milliseconds
+  int stats_execution_time = 0; // Milliseconds
+  int peaks_execution_time = 0; // Milliseconds
   
   if (!quiet) {
     std::cout << "\n  Kernel Execution" << std::endl;
@@ -566,6 +566,7 @@ int main(int argc, char const *argv[]) {
     }
 
     // Set frequency grid values
+    std::chrono::steady_clock::time_point t_coeff_begin = std::chrono::steady_clock::now();
     for (int i = 0; i < NFREQ_PADDED; i++) {
       if (i < NFREQ_PER_CHUNK) {
         h_grid[i] = h_grid_full[j*NFREQ_PER_CHUNK+i];
@@ -579,12 +580,16 @@ int main(int argc, char const *argv[]) {
     // Calculate the sine/cosine terms
     sincosCalc<<<blocks1, threads>>>(d_time, d_grid, d_sincos, pi, NFREQ_PADDED);
     cudaDeviceSynchronize();
+    std::chrono::steady_clock::time_point t_coeff_end = std::chrono::steady_clock::now();
+
+    // Update coefficient execution time
+    coeff_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_coeff_end - t_coeff_begin).count();
 
     // Second loop iterates over chunks of sources
     unsigned long objstart, objnum;
 
+
     for (unsigned long k = 0; k < NCHUNK_PGRAM; k++) {
-      
 
       // Get the range of objects to analyze
       if (!quiet) {
@@ -600,24 +605,26 @@ int main(int argc, char const *argv[]) {
       }
 
       // Check if object of interest is in this chunk
-      int oidx;
-      int idfound = 0;
-      for (oidx = objstart; oidx < objstart+objnum; oidx++) {
-        if (h_psid[oidx] == objID) {
-          idfound = 1;
-          std::cout << "      OBJECT FOUND!  Index = ";
-          std::cout << oidx << " (" << oidx-objstart << ")" << std::endl;
-          break;
-        }
-      }
+      // int oidx;
+      // int idfound = 0;
+      // for (oidx = objstart; oidx < objstart+objnum; oidx++) {
+      //   if (h_psid[oidx] == objID) {
+      //     idfound = 1;
+      //     std::cout << "      OBJECT FOUND!  Index = ";
+      //     std::cout << oidx << " (" << oidx-objstart << ")" << std::endl;
+      //     break;
+      //   }
+      // }
       //if (idfound == 0) continue;
       
       // Load the flux values and normalize the light curves
+      std::chrono::steady_clock::time_point t_loadLC_begin = std::chrono::steady_clock::now();
       status = get_sourcedata_chunk(hdf_filename, h_flux.data(), dd_index, objstart, objnum, NEXP_PADDED);
       check_status(status);
       normalizeLC(h_flux.data(), objnum, NEXP_PADDED);
 
       // Copy flux data to GPU
+      std::chrono::steady_clock::time_point t_pgram_begin = std::chrono::steady_clock::now();
       cudaMemcpy(d_flux, h_flux.data(), bytesFlux, cudaMemcpyHostToDevice);
   
       // Launch periodogram kernel
@@ -627,6 +634,7 @@ int main(int argc, char const *argv[]) {
       cudaMemcpy(h_pgram.data(), d_pgram, bytesPgram, cudaMemcpyDeviceToHost);
 
       // Launch periodogram Stats kernel
+      std::chrono::steady_clock::time_point t_stats_begin = std::chrono::steady_clock::now();
       pgramStats<<<BLOCKS_Y2, THREADS>>>(d_pgram, d_pgmean, d_pgstdev, NFREQ_PER_CHUNK, NFREQ_PADDED);
 
       // Copy periodogram stats back to the host
@@ -635,7 +643,7 @@ int main(int argc, char const *argv[]) {
 
 
       // Perform peak finding (using CPU parallelization)
-      std::chrono::steady_clock::time_point t_begin = std::chrono::steady_clock::now();
+      std::chrono::steady_clock::time_point t_peaks_begin = std::chrono::steady_clock::now();
       # pragma omp parallel for
       for (int i = 0; i < objnum; i++) {
 
@@ -645,7 +653,9 @@ int main(int argc, char const *argv[]) {
         std::vector<float> pgram_slice(first, last);
 
         // Get indices of peaks for slice
-        std::vector<int> peak_indices = find_peaks(pgram_slice, NPEAKS, DISTANCE);
+        std::vector<int> peak_indices = find_peaks(
+          pgram_slice, NPEAKS, DISTANCE, h_pgmean[i], h_pgstdev[i], THRESHOLD
+        );
 
         // Save peak frequencies and heights to full array
         if (peak_indices[0] > 0) { 
@@ -662,7 +672,6 @@ int main(int argc, char const *argv[]) {
             all_peak_frequencies[(i+objstart)*Npeakcol + j*NPEAKS + ii] = -1.0f; 
             all_peak_heights[(i+objstart)*Npeakcol + j*NPEAKS + ii] = -1.0f;
           }
-          // Save mean and stdev values
           all_pgram_means[(i+objstart)*NCHUNK_SINCOS + j] = -1.0f;
           all_pgram_stdevs[(i+objstart)*NCHUNK_SINCOS + j] = -1.0f;
         }
@@ -671,29 +680,28 @@ int main(int argc, char const *argv[]) {
         std::vector<float>().swap(pgram_slice);
         std::vector<int>().swap(peak_indices);
       }
-      std::chrono::steady_clock::time_point t_end = std::chrono::steady_clock::now();
+      std::chrono::steady_clock::time_point t_peaks_end = std::chrono::steady_clock::now();
 
-      // Print out time duration for peak finding
-      if (!quiet) {
-        std::cout << "      Peak finding time = ";
-        std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_begin).count() << "[ms]";
-        std::cout << std::endl;
-      }
+      // Update execution time parameters
+      lcurv_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_pgram_begin - t_loadLC_begin).count();
+      pgram_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_stats_begin - t_pgram_begin).count();
+      stats_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_peaks_begin - t_stats_begin).count();
+      peaks_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_peaks_end - t_peaks_begin).count();
 
       // Save Periodogram for object of interest
-      if (idfound == 1) {
-        std::cout << "      Saving periodogram to file...";
-        std::ofstream pgfile;
-        pgfile.open(pgfilename, std::ios_base::app); // Open in append mode
-        for (int i = 0; i < NFREQ_PADDED; i++) {
-          if (h_grid[i] == 0.0f) continue;
-          pgfile << std::fixed << std::setprecision(6) << h_grid[i] << "  ";
-          pgfile << std::fixed << std::setprecision(6) << h_pgram[(oidx-objstart)*NFREQ_PADDED + i];
-          pgfile << "\n";
-        }
-        pgfile.close();
-        std::cout << "Finished.\n";
-      }
+      // if (idfound == 1) {
+      //   std::cout << "      Saving periodogram to file...";
+      //   std::ofstream pgfile;
+      //   pgfile.open(pgfilename, std::ios_base::app); // Open in append mode
+      //   for (int i = 0; i < NFREQ_PADDED; i++) {
+      //     if (h_grid[i] == 0.0f) continue;
+      //     pgfile << std::fixed << std::setprecision(6) << h_grid[i] << "  ";
+      //     pgfile << std::fixed << std::setprecision(6) << h_pgram[(oidx-objstart)*NFREQ_PADDED + i];
+      //     pgfile << "\n";
+      //   }
+      //   pgfile.close();
+      //   std::cout << "Finished.\n";
+      // }
     }
   }
 
@@ -702,6 +710,7 @@ int main(int argc, char const *argv[]) {
   int Npeakcol_final = 3 * NPEAKS;
   std::vector<float> final_peaks(NSRC * Npeakcol_final, 0.0f);
 
+  std::chrono::steady_clock::time_point t_select_begin = std::chrono::steady_clock::now();
   # pragma omp parallel for
   for (int i = 0; i < NSRC; i++) {
 
@@ -785,6 +794,8 @@ int main(int argc, char const *argv[]) {
     peakfile << "\n";
   }
   peakfile.close();
+  std::chrono::steady_clock::time_point t_select_end = std::chrono::steady_clock::now();
+  int peaks_selection_time = std::chrono::duration_cast<std::chrono::milliseconds>(t_select_end - t_select_begin).count();
 
   // (For testing purposes) Save ALL peaks to file
   // std::ofstream allpeaksfile;
@@ -819,20 +830,25 @@ int main(int argc, char const *argv[]) {
   std::vector<float>().swap(all_pgram_means);
   std::vector<float>().swap(all_pgram_stdevs);
   std::vector<float>().swap(final_peaks);
+  std::vector<int>().swap(freq_flags);
 
   // Get timestamp at end of program execution
   std::chrono::steady_clock::time_point t_prog_end = std::chrono::steady_clock::now();
+  int total_execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(t_prog_end - t_prog_start).count();
   if (!quiet) {
     std::cout << "\n  Execution Times" << std::endl;
-    std::cout << "  -------------------------------------" << std::endl;
-    std::cout << "  Total Execution time = ";
-    std::cout <<  std::chrono::duration_cast<std::chrono::seconds>(t_prog_end - t_prog_start).count();
-    std::cout << " sec\n" << std::endl;
+    std::cout << "  --------------------------------------" << std::endl;
+    std::cout << "     Preprocessing/Malloc [ms] = " << preproc_execution_time << std::endl;
+    std::cout << "  Coefficient Calculation [ms] = " << coeff_execution_time << std::endl;
+    std::cout << "   LC Flux Load/Normalize [ms] = " << lcurv_execution_time << std::endl;
+    std::cout << "  Periodogram Calculation [ms] = " << pgram_execution_time << std::endl;
+    std::cout << "  Pgram Stats Calculation [ms] = " << stats_execution_time << std::endl;
+    std::cout << "             Peak Finding [ms] = " << peaks_execution_time << std::endl;
+    std::cout << "     Final Peak Selection [ms] = " << peaks_selection_time << std::endl;
+    std::cout << "                    Total [ms] = " << total_execution_time << "\n" << std::endl;
   }
   else {
-    std::cout << "  Total execution time: ";
-    std::cout << std::chrono::duration_cast<std::chrono::seconds>(t_prog_end - t_prog_start).count();
-    std::cout << " sec" << std::endl;
+    std::cout << "  Total [ms] = " << total_execution_time << std::endl;
   }
 
 
