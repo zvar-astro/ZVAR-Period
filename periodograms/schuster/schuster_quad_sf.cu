@@ -42,7 +42,7 @@ const long int THREADS = 16;  // 256 (16x16) threads per block
 // Define some periodogram parameters
 const float PMIN = 300.0f;                // Minimum period of frequency grid (5 minutes)
 const float PMAX = 3 * 365.25 * 86400.0f; // Maximum period of frequency grid (3 years)
-const int OFACTOR = 3;       // Over-sampling factor for frequency grid 
+const int OFACTOR = 3;       // Over-sampling factor for frequency grid
                              // (i.e. df = 1/T/ofactor, where T = light curve time baseline)
 
 // Peak finding parameters
@@ -51,7 +51,7 @@ const int DISTANCE = 100 * OFACTOR; // Minimum number of samples required betwee
 const float THRESHOLD = 5.0f;       // Minimum S/N threshold required for peaks
 
 // Set max number of CPU threads to use during parallelization
-const int MAX_CPU_THREADS = 8;  // Chosen for Feldspar computer with 8-core (16 thread) CPU
+const int MAX_CPU_THREADS = 8;
 
 // Set base directory for forced photometry HDF5 matchfiles
 std::string MATCHFILE_DIR = "/data/zvar/matchfiles/";
@@ -162,33 +162,37 @@ int main(int argc, char const *argv[]) {
 
   // Initial check on argument count
   if (argc < 6) {
-    printf("Usage: %s [-v] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
+    printf("Usage: %s [-v] [-f] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
     return 0;
   }
 
-  // Count required command line args and set verbosity
-  bool quiet = true;
+  // Count required command line args and set verbosity/frequency filter params
+  bool quiet = true;       // Whether to print out verbose info
+  bool filterfreq = false; // Whether to filter out terrestrial frequencies
   int argc_required = 0;
 
   for (int i = 1; i < argc; i++) {
-    if (std::string(argv[i]) != "-v") argc_required++;
-    else quiet = false;
+    if ((std::string(argv[i]) != "-v") && (std::string(argv[i]) != "-f")) {
+       argc_required++;
+    }
+    else if (std::string(argv[i]) == "-v") quiet = false;
+    else if (std::string(argv[i]) == "-f") filterfreq = true;
   }
 
   // Check for correct number of required arguments
   if (argc_required != 5) {
-    printf("Usage: %s [-v] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
+    printf("Usage: %s [-v] [-f] <field> <ccd> <quad> <filter> <device_id>\n", argv[0]);
     return 0;
   }
 
   // Set field, ccd, quad, and filter params
-  int arg_idx = 0; 
+  int arg_idx = 0;
   int field, ccd, quad;
   int deviceNum;
   std::string filter;
 
   for (int i = 1; i < argc; i++) {
-    if (std::string(argv[i]) != "-v") {
+    if ((std::string(argv[i]) != "-v") && (std::string(argv[i]) != "-f")) {
       if (arg_idx == 0) field = std::stoi(argv[i]);
       if (arg_idx == 1) ccd = std::stoi(argv[i]);
       if (arg_idx == 2) quad = std::stoi(argv[i]);
@@ -197,7 +201,6 @@ int main(int argc, char const *argv[]) {
       arg_idx++;
     }
   }
-  
 
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Define some filenames
@@ -246,7 +249,7 @@ int main(int argc, char const *argv[]) {
   cudaGetDeviceProperties(&device_prop, deviceNum);
   size_t bytesGlobal = device_prop.totalGlobalMem;
   size_t bytesMax = bytesGlobal * 90 / 100; // Limit to 90% to prevent memory overload
-  
+
   if (!quiet) {
     std::cout << "\n  GPU Device:" << std::endl;
     std::cout << "  -------------------------------------" << std::endl;
@@ -256,7 +259,7 @@ int main(int argc, char const *argv[]) {
     printf("  Limiting Memory Usage to %.2f GB\n", static_cast<float>(bytesMax) / (1<<30));
   }
 
-  
+
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Load Data from HDF5 file
 
@@ -264,12 +267,12 @@ int main(int argc, char const *argv[]) {
   int success = 0;
   const fs::path hdf_path{hdf_filename};
   if (fs::exists(hdf_path)) success = 1;
-  
+
   if (success == 0) {
     std::cout << "No HDF5 File found at " << hdf_filename << std::endl;
     return 0;
   }
-  
+
   // Get number of exposures and sources
   int NEXP, NSRC;
   NEXP = get_number_of_rows_wrapper(hdf_filename, "/data/exposures");
@@ -290,7 +293,7 @@ int main(int argc, char const *argv[]) {
   // Get indices of non-deep drilling time stamps
   std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP);
   int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
-  
+
   // Erase the deep drilling BJDs from bjd vector
   for (int i = NEXP-1; i >= 0; i--) {
     if (dd_index[i] == 0) {
@@ -320,7 +323,7 @@ int main(int argc, char const *argv[]) {
   float fmax = 1.f / PMIN * 86400.f;
   float fstep = 1.0f / (tmax - tmin) / static_cast<float>(OFACTOR);
   long int NFREQ = (fmax - fmin) / fstep;
- 
+
   // Generate array to store full frequency grid
   std::vector<float> h_grid_full(NFREQ);
 
@@ -330,19 +333,25 @@ int main(int argc, char const *argv[]) {
   }
 
   // Get indices to exclude terrestrial frequencies
-  std::vector<int> freq_flags = flagTerrestrialFreq(h_grid_full.data(), NFREQ);
+  if (filterfreq) {
+    std::vector<int> freq_flags = flagTerrestrialFreq(h_grid_full.data(), NFREQ);
 
-  // Erase terrestrial frequencies from vector
-  for (int i = NFREQ-1; i >= 0; i--) {
-    if (freq_flags[i] == 0) {
-      h_grid_full.erase(h_grid_full.begin() + i);
+    // Erase terrestrial frequencies from vector
+    for (int i = NFREQ-1; i >= 0; i--) {
+      if (freq_flags[i] == 0) {
+        h_grid_full.erase(h_grid_full.begin() + i);
+      }
     }
+
+    // Update the NFREQ value
+    NFREQ = std::accumulate(freq_flags.begin(), freq_flags.end(), 0);
+
+    // Clear memory
+    std::vector<int>().swap(freq_flags);
   }
 
   // Determine frequency grid padding
-  NFREQ = std::accumulate(freq_flags.begin(), freq_flags.end(), 0);
   long int NFREQ_PADDED = NFREQ + THREADS - NFREQ % THREADS;
-  //std::cout << freq_flags.size() - NFREQ << " frequencies removed" << std::endl;
 
   // Add zero padding to frequency grid
   for (int i = NEXP; i < NFREQ_PADDED; i++) {
@@ -762,7 +771,6 @@ int main(int argc, char const *argv[]) {
   std::vector<float>().swap(all_pgram_means);
   std::vector<float>().swap(all_pgram_stdevs);
   std::vector<float>().swap(final_peaks);
-  std::vector<int>().swap(freq_flags);
 
   // Get timestamp at end of program execution
   std::chrono::steady_clock::time_point t_prog_end = std::chrono::steady_clock::now();
