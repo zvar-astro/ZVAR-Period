@@ -1,5 +1,18 @@
 #include "filepaths.h"
 
+/**
+ * @brief Function to write the input file path for a given field, ccd, quad, and filter
+ * 
+ *  Creates a string with the path to the input file for a given field, ccd, quad, and filter.
+ * 
+ * @param field The field number.
+ * @param ccd The ccd number. 1-16
+ * @param quad The quad number. 1-4
+ * @param filter The filter name. "g", "r", "i"
+ * @return The input file path string.
+ * 
+ * @note This function is specific to the magnetar folder structure.
+ */
 std::string writeInputFilePath(const int field, const int ccd, const int quad, const std::string &filter) {
     std::stringstream ss;
     ss << "/data/zvar/matchfiles/";
@@ -12,6 +25,19 @@ std::string writeInputFilePath(const int field, const int ccd, const int quad, c
     return filename;
 }
 
+/**
+ * @brief Function to write the output file path for a given field, ccd, quad, and filter
+ * 
+ * Creates a string with the path to the output file for a given field, ccd, quad, and filter.
+ * 
+ * @param field The field number.
+ * @param ccd The ccd number. 1-16
+ * @param quad The quad number. 1-4
+ * @param filter The filter name. "g", "r", "i"
+ * @return The output file path string.
+ * 
+ * @note This function is specific to the magnetar folder structure.
+ */
 std::string writeOutputFilePath(const int field, const int ccd, const int quad, const std::string &filter) {
     std::stringstream ss;
     ss << "/data/zvar/zvar_results/";
@@ -33,6 +59,14 @@ std::string writeOutputFilePath(const int field, const int ccd, const int quad, 
     return filename;
 }
 
+/**
+ * @brief Function to initialize frame data from an HDF5 file
+ * 
+ * This function reads the exposure and source tables from an HDF5 file and initializes the time vector.
+ * 
+ * @param filename The path to the HDF5 file.
+ * @return A tuple containing the number of exposures, number of sources, and time vector.
+ */
 std::tuple<unsigned int, unsigned int, std::vector<float>> initializeFrameData(const std::string &filename) {
     // Variables to store number of exposures & sources
     int NEXP = get_number_of_rows_wrapper(filename, "/data/exposures");

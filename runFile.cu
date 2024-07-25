@@ -1,5 +1,16 @@
 #include "runFile.cuh"
 
+/**
+ * @brief Runs a single periodogram algorithm on a single matchfile and writes the results to a file
+ * 
+ * Computes periodograms for every light curve in a matchfile. Find the most significant independent peaks. Writes the results to an HDF5 file.
+ * 
+ * @param field The field number of the matchfile
+ * @param ccd The ccd number of the matchfile 1-16
+ * @param quad The quadrant number of the matchfile 1-4
+ * @param filter The filter of the matchfile "g", "r", "i"
+ * 
+ */
 void runFile(int field, int ccd, int quad, std::string filter) {
 
     // Write the file path
