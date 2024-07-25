@@ -155,21 +155,29 @@ std::vector<int> find_peaks(const std::vector<float> x,
     int i = 1; // Pointer to current sample (first one can't be a maximum)
     int i_max = x.size() - 1; // Last sample also can't be a maximum
     int i_ahead = i + 1; // Index to look ahead one sample
-    
+    float snr; // Param to store S/N of each periodogram value
+
     // Find the peaks
     while (i < i_max) {
+
+        // First check that value exceeds threshold
+        snr = (x[i] - mean) / stdev;
+        if (snr < threshold) {
+            i += 1;
+            continue;
+        }
 
         // Test if previous sample is smaller
         if (x[i - 1] < x[i]) {
             i_ahead = i + 1;
-            
+
             // Find next sample unequal to x[i]
             while (i_ahead < i_max && x[i_ahead] == x[i]) {
                 i_ahead += 1;
             }
 
             // Maxima is found if next unequal sample is smaller than x[i]
-            if (x[i_ahead] < x[i] && (x[i]-mean)/stdev > threshold) {
+            if (x[i_ahead] < x[i]) {
                 midpoints.push_back((i + i_ahead - 1) / 2);
                 i = i_ahead;
                 numpeaks += 1;
@@ -177,8 +185,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
         }
         i += 1;
     }
-    // std::cout << "      Num Peaks Inits = " << numpeaks << std::endl;
-    
+
     // Create vector to store indices of the "Ntop" highest peaks
     std::vector<int> itop(Ntop);
 
@@ -187,7 +194,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
         for (int i = 0; i < Ntop; i++) itop[i] = -1;
         return itop;
     }
-    
+
     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     /*
        This section will filter all of the peaks using the
