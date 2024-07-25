@@ -3,11 +3,6 @@
 // Caltech Stellar forced photometry light curves
 // one ZTF quadrant at a time.
 //
-// Compile with: 
-//
-// nvcc schuster_quad_sf.cu hdf5_utils.cu peak_utils.cu -o schuster -I /usr/include/hdf5/serial/ -L /usr/lib/x86_64-linux-gnu/hdf5/serial/ -lhdf5 -lstdc++fs -Xcompiler -fopenmp -lgomp -O3
-//
-//
 // Author: Zach Vanderbosch (Caltech)
 
 
@@ -39,11 +34,6 @@ namespace fs = std::experimental::filesystem;
 
 // Define PI constant as a float
 const float pi = 3.141592653589793238462643383279502884197;
-
-// Define Pan-STARRS1 Object ID to save periodogram for
-// const unsigned long objID = 161213227363186155;  // In field 769, ccd 2, quad 3 (Ra-dec = 322.7362802 44.3462273, ZTFJ2130+4420, P=39.3 min)
-// const unsigned long objID = 171792853559000466;  // In field 798, ccd 5, quad 4 (Ra-dec = 285.3559167 53.1581306, ZTFJ1901+5309, P=40.6 min)
-// const std::string pgfilename = "../data/pgram_obj.dat";
 
 // Set number of threads along one block dimension,
 // (e.g. one block has THREADS X THREADS total threads)
@@ -238,16 +228,6 @@ int main(int argc, char const *argv[]) {
   fs::create_directory(period_path); // create PERIOD_DIR
   fs::create_directory(period_field_path); // create PERIOD_DIR/field folder
 
-  // Define filename to store ALL Schuster Periodogram (SP) period 
-  // detections from each frequency chunk (for testing purposes only)
-  // std::stringstream ssap;
-  // ssap << PERIOD_DIR;
-  // ssap << std::setfill('0') << std::setw(4) << field << "/all_periods_SP_";
-  // ssap << std::setfill('0') << std::setw(4) << field << "_";
-  // ssap << std::setfill('0') << std::setw(2) << ccd << "_";
-  // ssap << quad << "_z" << filter << ".dat";
-  // std::string allpeakfilename = ssap.str();
-
 
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Some initial setup and GPU selection
@@ -275,14 +255,6 @@ int main(int argc, char const *argv[]) {
     printf("  %.2f GB Global Memory\n", static_cast<float>(bytesGlobal) / (1<<30));
     printf("  Limiting Memory Usage to %.2f GB\n", static_cast<float>(bytesMax) / (1<<30));
   }
-
-  // Clear out periodogram file if it exists
-  // const fs::path pgpath{pgfilename};
-  // if (fs::exists(pgpath)) {
-  //   std::ofstream pgfile;
-  //   pgfile.open(pgfilename);
-  //   pgfile.close();
-  // }
 
   
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -604,19 +576,6 @@ int main(int argc, char const *argv[]) {
                  (k * static_cast<unsigned long>(NSRC_PER_CHUNK));
       }
 
-      // Check if object of interest is in this chunk
-      // int oidx;
-      // int idfound = 0;
-      // for (oidx = objstart; oidx < objstart+objnum; oidx++) {
-      //   if (h_psid[oidx] == objID) {
-      //     idfound = 1;
-      //     std::cout << "      OBJECT FOUND!  Index = ";
-      //     std::cout << oidx << " (" << oidx-objstart << ")" << std::endl;
-      //     break;
-      //   }
-      // }
-      //if (idfound == 0) continue;
-      
       // Load the flux values and normalize the light curves
       std::chrono::steady_clock::time_point t_loadLC_begin = std::chrono::steady_clock::now();
       status = get_sourcedata_chunk(hdf_filename, h_flux.data(), dd_index, objstart, objnum, NEXP_PADDED);
@@ -687,21 +646,6 @@ int main(int argc, char const *argv[]) {
       pgram_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_stats_begin - t_pgram_begin).count();
       stats_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_peaks_begin - t_stats_begin).count();
       peaks_execution_time += std::chrono::duration_cast<std::chrono::milliseconds>(t_peaks_end - t_peaks_begin).count();
-
-      // Save Periodogram for object of interest
-      // if (idfound == 1) {
-      //   std::cout << "      Saving periodogram to file...";
-      //   std::ofstream pgfile;
-      //   pgfile.open(pgfilename, std::ios_base::app); // Open in append mode
-      //   for (int i = 0; i < NFREQ_PADDED; i++) {
-      //     if (h_grid[i] == 0.0f) continue;
-      //     pgfile << std::fixed << std::setprecision(6) << h_grid[i] << "  ";
-      //     pgfile << std::fixed << std::setprecision(6) << h_pgram[(oidx-objstart)*NFREQ_PADDED + i];
-      //     pgfile << "\n";
-      //   }
-      //   pgfile.close();
-      //   std::cout << "Finished.\n";
-      // }
     }
   }
 
@@ -796,18 +740,6 @@ int main(int argc, char const *argv[]) {
   peakfile.close();
   std::chrono::steady_clock::time_point t_select_end = std::chrono::steady_clock::now();
   int peaks_selection_time = std::chrono::duration_cast<std::chrono::milliseconds>(t_select_end - t_select_begin).count();
-
-  // (For testing purposes) Save ALL peaks to file
-  // std::ofstream allpeaksfile;
-  // allpeaksfile.open(allpeakfilename);
-  // for (int i = 0; i < NSRC; i++) {
-  //   for (int j = 0; j < Npeakcol; j++) {
-  //     allpeaksfile << std::fixed << std::setprecision(4) << all_peak_frequencies[i*Npeakcol + j] << "  ";
-  //     allpeaksfile << std::fixed << std::setprecision(4) << all_peak_heights[i*Npeakcol + j] << "  ";
-  //   }
-  //   allpeaksfile << "\n";
-  // }
-  // allpeaksfile.close();
 
 
   // Free device (GPU) memory
