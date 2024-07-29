@@ -30,7 +30,6 @@ void runFile(int field, int ccd, int quad, std::string filter) {
     vector<float> fgrid(fgrid_double.begin(), fgrid_double.end()); //convert to floats
     int N_freqs = fgrid.size();
 
-    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     // Load in flux values while iterating over chunks of sources
 
     // Define Chunk parameters

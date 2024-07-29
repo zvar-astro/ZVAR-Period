@@ -1,16 +1,17 @@
 # ninja log v5
 3	1817	1721775053024190556	CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o	d0f75d78f34277ea
-6	7155	1721761548381992281	CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o	e1da4e8624b1f6ca
-7048	7234	1721777530157286039	CMakeFiles/cudaFPW.dir/cmake_device_link.o	fd4a5e754c06432c
-4	8436	1721776254834636038	CMakeFiles/cudaFPW.dir/runFile.cu.o	69d3f5d010b63845
-1	588	1721936896032379929	build.ninja	9d33de34409c2bf0
-4	589	1721761541826021342	CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o	41e479637b5735f6
-2	7047	1721777529965286838	CMakeFiles/cudaFPW.dir/testmain.cu.o	4e8fe534408da6a7
-7234	7394	1721777530321285356	cudaFPW	8e249bdddc84676e
-4	7562	1721761548789990474	CMakeFiles/cudaFPW.dir/main.cu.o	b39fb06f99e75fae
+4	7559	1722028932663950501	CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o	e1da4e8624b1f6ca
+6810	7224	1722275215201079037	CMakeFiles/cudaFPW.dir/cmake_device_link.o	90a9a2d7e70a5702
+4	8132	1722028933239945355	CMakeFiles/cudaFPW.dir/runFile.cu.o	69d3f5d010b63845
+1	588	1722275501207862250	build.ninja	9d33de34409c2bf0
+3	600	1722028925720012748	CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o	41e479637b5735f6
+4	6885	1722030154164031930	CMakeFiles/cudaFPW.dir/testmain.cu.o	4e8fe534408da6a7
+7224	7370	1722275215349078400	cudaFPW	9a863cd09b13a32e
+3	6808	1722275214777080860	CMakeFiles/cudaFPW.dir/main.cu.o	b39fb06f99e75fae
 6	1223	1721761542454018557	CMakeFiles/cudaFPW.dir/statistics/curve_statistics.cu.o	8479d37e06f593b
 5	2444	1721761543674013148	CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o	1a62871e22ed02ec
-7	1090	1721761542326019124	CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o	f2f291d73ea5e76d
+4	1144	1722028926264007858	CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o	f2f291d73ea5e76d
 4	632	1721253539906246305	CMakeFiles/cudaFPW.dir/readwrite/read_data.cpp.o	f5989fbf728ec65a
 5	1840	1721761543078015790	CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o	ca537065f755106f
 7	1136	1721761542370018930	CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o	521a2da233612fe4
+3	165	1722275510191824379	cudaFPW	9a863cd09b13a32e

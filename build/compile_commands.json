@@ -1,8 +1,8 @@
 [
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
-  "command": "/usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -std=c++17 -x cu -dc /data/swhitebook/github/ZVAR/testmain.cu -o CMakeFiles/cudaFPW.dir/testmain.cu.o",
-  "file": "/data/swhitebook/github/ZVAR/testmain.cu"
+  "command": "/usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -std=c++17 -x cu -dc /data/swhitebook/github/ZVAR/main.cu -o CMakeFiles/cudaFPW.dir/main.cu.o",
+  "file": "/data/swhitebook/github/ZVAR/main.cu"
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
