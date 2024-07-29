@@ -94,9 +94,8 @@ void runFile(int field, int ccd, int quad, std::string filter) {
         if (k == 0) {
             writeResults(results_filename, psids.data(), bestFreqs, signifiance, N_curves, NSRC, N_samples);
         }
-        else {
-            appendResults(results_filename, psids.data(), bestFreqs, signifiance, N_curves, N_samples, objstart);
-        }
+        
+        appendResults(results_filename, psids.data(), bestFreqs, signifiance, N_curves, N_samples, objstart);
 
         // Free memory
         delete[] indices;
