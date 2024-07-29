@@ -6,6 +6,7 @@
 #include "readwrite/filepaths.h"
 #include "periodograms/frequencyGrid.h"
 #include "statistics/curve_statistics.cuh"
+#include "statistics/polyfit.cuh"
 
 #include <iostream>
 #include <random>

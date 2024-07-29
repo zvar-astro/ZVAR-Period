@@ -64,11 +64,14 @@ void runFile(int field, int ccd, int quad, std::string filter) {
         // Load the psids
         status = get_sources_chunk(hdf_filename, psids.data(), objstart, objnum);
 
+        // Remove baseline from flux values
+        float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
+
         //Run FPW
         int N_freq_batch = 1000000;
         int N_curves_batch = 100;
         float* t_host = time.data();
-        float* flux_host = flux.data();
+        float* flux_host = flux_no_baseline;
         float* fluxErr_host = fluxErr.data();
         float* fgrid_host = fgrid.data();
         int N_data = static_cast<int>(NEXP);
@@ -98,6 +101,7 @@ void runFile(int field, int ccd, int quad, std::string filter) {
         appendResults(results_filename, psids.data(), bestFreqs, signifiance, N_curves, N_samples, objstart);
 
         // Free memory
+        delete[] flux_no_baseline;
         delete[] indices;
         delete[] bestFreqs;
         delete[] signifiance;
