@@ -3,17 +3,17 @@
 MatrixXf cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf freqs_vec, 
                     int N_bins, int N_freqs_batch, int N_curves_batch) {
 
-    float totalTime = 0.0f;
-    //time stuff
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
+    // //time stuff
+    // float totalTime = 0.0f;
+    // cudaEvent_t start, stop;
+    // cudaEventCreate(&start);
+    // cudaEventCreate(&stop);
+    // cudaEventRecord(start);
 
     int N_dat = t_vec.size();
     int N_curves = y_mat.cols();
     int N_freqs = freqs_vec.size();
-    printf("N_dat: %d, N_curves: %d, N_freqs: %d\n", N_dat, N_curves, N_freqs);
+    // printf("N_dat: %d, N_curves: %d, N_freqs: %d\n", N_dat, N_curves, N_freqs);
 
     // Convert to arrays
     float* t_host = t_vec.data();
@@ -87,17 +87,17 @@ MatrixXf cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf fr
         }
     }
 
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    // cudaEventRecord(stop);
+    // cudaEventSynchronize(stop);
 
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, start, stop);
-    totalTime += milliseconds;
+    // float milliseconds = 0;
+    // cudaEventElapsedTime(&milliseconds, start, stop);
+    // totalTime += milliseconds;
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    // cudaEventDestroy(start);
+    // cudaEventDestroy(stop);
 
-    printf("execution time per LC: %f ms\n", totalTime/ N_curves); // Print the total time
+    // printf("execution time per LC: %f ms\n", totalTime/ N_curves); // Print the total time
 
     // Free device memory
     cudaFree(t);
@@ -121,18 +121,18 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
                     int N_dat, int N_curves, int N_freqs,
                     int* N_bins, int N_freqs_batch, int N_curves_batch, int N_samples) {
 
-    //time stuff
-    float totalTime = 0.0f;
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    // //time stuff
+    // float totalTime = 0.0f;
+    // cudaEvent_t start, stop;
+    // cudaEventCreate(&start);
+    // cudaEventCreate(&stop);
 
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
         N_bins_total += N_bins[i];
     }
-    printf("N_dat: %d, N_curves: %d, N_freqs: %d\n", N_dat, N_curves, N_freqs);
-    printf("N_bins_total: %d\n", N_bins_total);
+    // printf("N_dat: %d, N_curves: %d, N_freqs: %d\n", N_dat, N_curves, N_freqs);
+    // printf("N_bins_total: %d\n", N_bins_total);
 
     // Allocate memory for device arrays
     float* t;
@@ -175,10 +175,10 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
         ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
     }
 
-    //diagnostics
-    cout << "periodogram size " << N_curves * N_freqs * N_samples << endl;
+    // //diagnostics
+    // cout << "periodogram size " << N_curves * N_freqs * N_samples << endl;
 
-    cudaEventRecord(start);
+    // cudaEventRecord(start);
     // Run kernels for each batch of frequencies over all light curves
     for (int i=0; i < N_freqs; i += N_freqs_batch) {
         int N_freqs_current = min(N_freqs_batch, N_freqs - i);
@@ -214,19 +214,19 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
         }
     }
 
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    // cudaEventRecord(stop);
+    // cudaEventSynchronize(stop);
 
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, start, stop);
-    totalTime += milliseconds;
+    // float milliseconds = 0;
+    // cudaEventElapsedTime(&milliseconds, start, stop);
+    // totalTime += milliseconds;
     
-    cout << "total time: " << totalTime << endl;
+    // cout << "total time: " << totalTime << endl;
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    // cudaEventDestroy(start);
+    // cudaEventDestroy(stop);
 
-    printf("execution time per LC per bin sample: %f ms\n", totalTime/ N_curves / N_samples); // Print the total time
+    // printf("execution time per LC per bin sample: %f ms\n", totalTime/ N_curves / N_samples); // Print the total time
 
     // Free device memory
     cudaFree(t);

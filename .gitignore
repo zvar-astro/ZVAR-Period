@@ -4,7 +4,6 @@
 # cmake_install.cmake
 # Makefile
 # /CMakeLists.txt
-# /testmain.cu
 
 # Ignore VSCode settings
 .vscode/

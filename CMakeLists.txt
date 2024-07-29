@@ -27,6 +27,7 @@ add_executable(cudaFPW main.cu
                ../statistics/curve_statistics.cu
                ../readwrite/hdf5_utils.cpp
                ../readwrite/filepaths.cpp
+               ../msc/diagnostics.cpp
                runFile.cu)
 
 # Specify the CUDA standard

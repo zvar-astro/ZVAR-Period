@@ -7,18 +7,18 @@
 #include "periodograms/frequencyGrid.h"
 #include "statistics/curve_statistics.cuh"
 #include "statistics/polyfit.cuh"
+#include "msc/diagnostics.h"
 
 #include <iostream>
 #include <random>
 #include <chrono>
 #include <cuda_runtime.h>
-
-//STUFF FOR LOADING H5 FILES
+#include <string>
 #include <iomanip>
 #include <tuple>
 
 using namespace std;
 
-void runFile(int field, int ccd, int quad, std::string filter);
+void runFile(int field, int ccd, int quad, std::string filter, std::string logpath);
 
 #endif //RUN_FILE_H

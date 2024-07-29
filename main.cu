@@ -1,5 +1,6 @@
 #include "runFile.cuh"
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <cstdlib> // For atoi
 #include <chrono>  // For timing
@@ -33,20 +34,21 @@ int main(int argc, char* argv[]) {
     cudaFuncSetAttribute(cudaDeltaChi2, cudaFuncAttributeMaxDynamicSharedMemorySize, 99 * 1024);
     cudaFuncSetAttribute(cudaDeltaChi2Multibin, cudaFuncAttributeMaxDynamicSharedMemorySize, 99 * 1024);
 
-    // Start the timer
-    auto start = high_resolution_clock::now();
+    // write the log file path
+    string logpath = "/data/zvar/logs/device_" + to_string(device) + "_log.txt";
+
+    //check if the log file exists, create one if it doesn't
+    ifstream infile(logpath);
+    if (!infile.good()) {
+        ofstream outfile(logpath);
+        if (!outfile) {
+            cerr << "Failed to create log file: " << logpath << endl;
+            return 1;
+        }
+    }
 
     // Run the file with the provided arguments
-    runFile(field, ccd, quad, filter);
-
-    // Stop the timer
-    auto end = high_resolution_clock::now();
-
-    // Calculate the duration
-    auto duration = duration_cast<minutes>(end - start).count();
-
-    // Print the duration
-    cout << "Execution time: " << duration << " minutes" << endl;
+    runFile(field, ccd, quad, filter, logpath);
 
     return 0;
 }

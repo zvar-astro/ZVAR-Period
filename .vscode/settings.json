@@ -79,7 +79,8 @@
         "optional": "cpp",
         "__nullptr": "cpp",
         "__locale": "cpp",
-        "dense": "cpp"
+        "dense": "cpp",
+        "filesystem": "cpp"
     },
     "cmake.generator": "Ninja",
     "cmake.configureOnOpen": true
