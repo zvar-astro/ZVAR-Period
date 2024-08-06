@@ -158,7 +158,7 @@ int get_sources_wrapper(std::string filename,
 }
 
 
-int get_sources_chunk(std::string filename, unsigned long *psids, unsigned long objstart, unsigned long objnum) {
+int get_sources_chunk(std::string filename, unsigned long *psids, float *ra, float *dec, unsigned long objstart, unsigned long objnum) {
 
   /* 
   Function to read a contiguous chunk of data from the sources table
@@ -198,12 +198,16 @@ int get_sources_chunk(std::string filename, unsigned long *psids, unsigned long 
   // Read data from table
   hid_t sources_tid = H5Tcreate(H5T_COMPOUND,sizeof(sources));
   H5Tinsert(sources_tid,"gaia_id",HOFFSET(sources,psid),H5T_NATIVE_ULONG);
+  H5Tinsert(sources_tid,"ra",HOFFSET(sources,ra),H5T_NATIVE_FLOAT);
+  H5Tinsert(sources_tid,"decl",HOFFSET(sources,dec),H5T_NATIVE_FLOAT);
   data = (sources *) malloc(sizeof(sources)*objnum);
   status = H5Dread(table,sources_tid,memspace,dataspace,H5P_DEFAULT,data);
 
   // Populate psid array with values
   for (int i = 0; i < objnum; i++) {
     psids[i] = data[i].psid;
+    ra[i] = data[i].ra;
+    dec[i] = data[i].dec;
   }
 
   // Deallocate memory
@@ -251,7 +255,7 @@ int get_sourcedata(hid_t table, float *flux, int N) {
 
 
 
-int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, unsigned long objstart, 
+int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, unsigned short* ratioValid, unsigned long objstart, 
   unsigned long objnum, unsigned long N, unsigned long numentry) {
 
   /* 
@@ -260,6 +264,8 @@ int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, unsi
   
   filename = Name of HDF5 file
   flux     = Array pointer to store flux values
+  fluxErr = Array pointer to store flux errors
+  ratioValid = Array pointer to store what percentage of a light curve is valid
   objstart = Object number at which to start reading data
   objnum   = Number of objects to read
   N        = Number of observations per object
@@ -301,6 +307,7 @@ int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, unsi
 
   // Populate flux array with values
   for (int i = 0; i < objnum; i++) {
+    int validCount = 0;
     for (int j = 0; j < N; j++) {
       if (std::isnan(data[i*N+j].flux)) {
         flux[i*numentry+j] = 0.0f;
@@ -309,8 +316,10 @@ int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, unsi
       else {
         flux[i*numentry+j] = data[i*N+j].flux;
         fluxErr[i*numentry+j] = data[i*N+j].fluxErr;
+        validCount++;
       }
     }
+    ratioValid[i] = static_cast<unsigned short>(validCount / N);
   }
 
   // Deallocate memory
@@ -595,6 +604,63 @@ void normalizeLC(float *flux, int N_s, int N_d) {
   std::vector<float>().swap(deviations);
 }
 
+// void normalizeLC(float *flux, float *fluxErr, int N_s, int N_d) {
+
+//   /* 
+//   Function to median-zero and normalize the flux
+//   values for each source.
+
+//   flux = Array of flux values for all source
+//   fluxErr = Array of flux errors for all sources
+//   N_s  = Number of sources
+//   N_d  = Number of flux values per source
+//   */
+  
+//   size_t size;
+//   float median, MAD;
+//   std::vector<float> nzflux;
+//   std::vector<float> deviations;
+  
+//   // Iterate over each source
+//   for (int i = 0; i < N_s; i++) {
+
+//     // First populate vector with non-zero (non-NaN) values
+//     for (int j = 0; j < N_d; j++) {
+//       if (flux[i*N_d+j] != 0.0f) {
+//         nzflux.push_back(flux[i*N_d+j]);
+//         deviations.push_back(0.0f);
+//       }
+//     }
+
+//     // Calculate median and median absolute deviation (MAD)
+//     size = nzflux.size();
+//     if (size > 0) {
+//       median = calcMedian(nzflux, size);
+//       calcDeviations(deviations.data(), nzflux.data(), median, size);
+//       MAD = calcMedian(deviations, size);
+//     }
+//     else {
+//       median = 0.0f;
+//       MAD = 1.0f;
+//     }
+    
+//     // Now subtract median and normalize by MAD
+//     for (int j = 0; j < N_d; j++) {
+//       flux[i*N_d+j] = (flux[i*N_d+j] - median) / MAD;
+//     }
+    
+//     // Erase elements from nzflux and deviations
+//     for(int j = size-1; j >= 0; j--) {
+//       nzflux.erase(nzflux.begin() + j); 
+//       deviations.erase(deviations.begin() + j);
+//     }
+//   }
+
+//   // Clear vectors from memory
+//   std::vector<float>().swap(nzflux);
+//   std::vector<float>().swap(deviations);
+// }
+
 
 void normalizeLC_dualband(float *flux, int N_s, int N1, int N2, int numentry) {
 
@@ -683,57 +749,101 @@ void normalizeLC_dualband(float *flux, int N_s, int N1, int N2, int numentry) {
 
 }
 
-void writeResults(std::string filename, unsigned long* psids, float* bestFreqs, float* significance, int N_curves, int total_curves, int N_samples) {
+void writeResults(std::string filename, int N_curves, int total_curves, int N_samples, int N_peaks) {
     // Create a new HDF5 file
     hid_t file_id = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
     // Define the maximum dimensions for each dataset
     hsize_t max_dims_psids[1] = {static_cast<hsize_t>(total_curves)};
-    hsize_t max_dims_bestFreqs[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples)};
-    hsize_t max_dims_significance[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples)};
+    hsize_t max_dims_ra[1] = {static_cast<hsize_t>(total_curves)};
+    hsize_t max_dims_dec[1] = {static_cast<hsize_t>(total_curves)};
+    hsize_t max_dims_valid[1] = {static_cast<hsize_t>(total_curves)};
+    hsize_t max_dims_bestFreqs[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples) * static_cast<hsize_t>(N_peaks)};
+    hsize_t max_dims_significance[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples) * static_cast<hsize_t>(N_peaks)};
+    hsize_t max_dims_means[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples)};
+    hsize_t max_dims_stds[1] = {static_cast<hsize_t>(total_curves) * static_cast<hsize_t>(N_samples)};
 
     // Create dataspaces for each dataset with the maximum dimensions
     hid_t dataspace_psids_max = H5Screate_simple(1, max_dims_psids, NULL);
+    hid_t dataspace_ra_max = H5Screate_simple(1, max_dims_ra, NULL);
+    hid_t dataspace_dec_max = H5Screate_simple(1, max_dims_dec, NULL);
+    hid_t dataspace_valid_max = H5Screate_simple(1, max_dims_valid, NULL);
     hid_t dataspace_bestFreqs_max = H5Screate_simple(1, max_dims_bestFreqs, NULL);
     hid_t dataspace_significance_max = H5Screate_simple(1, max_dims_significance, NULL);
+    hid_t dataspace_means_max = H5Screate_simple(1, max_dims_means, NULL);
+    hid_t dataspace_stds_max = H5Screate_simple(1, max_dims_stds, NULL);
 
     // Create datasets
     hid_t psids_dataset_id = H5Dcreate(file_id, "psids", H5T_NATIVE_ULONG, dataspace_psids_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t ra_dataset_id = H5Dcreate(file_id, "ra", H5T_NATIVE_FLOAT, dataspace_ra_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t dec_dataset_id = H5Dcreate(file_id, "dec", H5T_NATIVE_FLOAT, dataspace_dec_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t valid_dataset_id = H5Dcreate(file_id, "valid", H5T_NATIVE_USHORT, dataspace_valid_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     hid_t bestFreqs_dataset_id = H5Dcreate(file_id, "bestFreqs", H5T_NATIVE_FLOAT, dataspace_bestFreqs_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     hid_t significance_dataset_id = H5Dcreate(file_id, "significance", H5T_NATIVE_FLOAT, dataspace_significance_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t means_dataset_id = H5Dcreate(file_id, "means", H5T_NATIVE_FLOAT, dataspace_means_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t stds_dataset_id = H5Dcreate(file_id, "stds", H5T_NATIVE_FLOAT, dataspace_stds_max, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
     // Close resources
     H5Sclose(dataspace_psids_max);
+    H5Sclose(dataspace_ra_max);
+    H5Sclose(dataspace_dec_max);
+    H5Sclose(dataspace_valid_max);
     H5Sclose(dataspace_bestFreqs_max);
     H5Sclose(dataspace_significance_max);
     H5Dclose(psids_dataset_id);
     H5Dclose(bestFreqs_dataset_id);
     H5Dclose(significance_dataset_id);
+    H5Dclose(means_dataset_id);
+    H5Dclose(stds_dataset_id);
     H5Fclose(file_id);
 }
 
-void appendResults(std::string filename, unsigned long* psids, float* bestFreqs, float* significance, int N_curves, int N_samples, unsigned long offset) {
+void appendResults(std::string filename, unsigned long* psids, float* ra, float* dec, unsigned short* valid, float* bestFreqs, float* significance, float* means, float* stdevs, int N_curves, int N_samples, int N_peaks, unsigned long offset) {
     // Open the existing HDF5 file
     hid_t file_id = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
 
     // Open the datasets
     hid_t psids_dataset_id = H5Dopen(file_id, "psids", H5P_DEFAULT);
+    hid_t ra_dataset_id = H5Dopen(file_id, "ra", H5P_DEFAULT);
+    hid_t dec_dataset_id = H5Dopen(file_id, "dec", H5P_DEFAULT);
+    hid_t valid_dataset_id = H5Dopen(file_id, "valid", H5P_DEFAULT);
     hid_t bestFreqs_dataset_id = H5Dopen(file_id, "bestFreqs", H5P_DEFAULT);
     hid_t significance_dataset_id = H5Dopen(file_id, "significance", H5P_DEFAULT);
+    hid_t means_dataset_id = H5Dopen(file_id, "means", H5P_DEFAULT);
+    hid_t stds_dataset_id = H5Dopen(file_id, "stds", H5P_DEFAULT);
 
     // Define the dimensions for the data to be written
     hsize_t dims_psids[1] = {static_cast<hsize_t>(N_curves)};
-    hsize_t dims_bestFreqs[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
-    hsize_t dims_significance[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+    hsize_t dims_ra[1] = {static_cast<hsize_t>(N_curves)};
+    hsize_t dims_dec[1] = {static_cast<hsize_t>(N_curves)};
+    hsize_t dims_valid[1] = {static_cast<hsize_t>(N_curves)};
+    hsize_t dims_bestFreqs[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples) * static_cast<hsize_t>(N_peaks)};
+    hsize_t dims_significance[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples) * static_cast<hsize_t>(N_peaks)};
+    hsize_t dims_means[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
+    hsize_t dims_stds[1] = {static_cast<hsize_t>(N_curves) * static_cast<hsize_t>(N_samples)};
 
     // Define the offset for the hyperslab
     hsize_t offset_psids[1] = {static_cast<hsize_t>(offset)};
-    hsize_t offset_bestFreqs[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples)};
-    hsize_t offset_significance[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples)};
+    hsize_t offset_ra[1] = {static_cast<hsize_t>(offset)};
+    hsize_t offset_dec[1] = {static_cast<hsize_t>(offset)};
+    hsize_t offset_valid[1] = {static_cast<hsize_t>(offset)};
+    hsize_t offset_bestFreqs[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples) * static_cast<hsize_t>(N_peaks)};
+    hsize_t offset_significance[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples) * static_cast<hsize_t>(N_peaks)};
+    hsize_t offset_means[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples)};
+    hsize_t offset_stds[1] = {static_cast<hsize_t>(offset) * static_cast<hsize_t>(N_samples)};
 
     // Define the file dataspace and select the hyperslab
     hid_t file_dataspace_psids = H5Dget_space(psids_dataset_id);
     H5Sselect_hyperslab(file_dataspace_psids, H5S_SELECT_SET, offset_psids, NULL, dims_psids, NULL);
+
+    hid_t file_dataspace_ra = H5Dget_space(ra_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_ra, H5S_SELECT_SET, offset_ra, NULL, dims_ra, NULL);
+
+    hid_t file_dataspace_dec = H5Dget_space(dec_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_dec, H5S_SELECT_SET, offset_dec, NULL, dims_dec, NULL);
+
+    hid_t file_dataspace_valid = H5Dget_space(valid_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_valid, H5S_SELECT_SET, offset_valid, NULL, dims_valid, NULL);
 
     hid_t file_dataspace_bestFreqs = H5Dget_space(bestFreqs_dataset_id);
     H5Sselect_hyperslab(file_dataspace_bestFreqs, H5S_SELECT_SET, offset_bestFreqs, NULL, dims_bestFreqs, NULL);
@@ -741,25 +851,54 @@ void appendResults(std::string filename, unsigned long* psids, float* bestFreqs,
     hid_t file_dataspace_significance = H5Dget_space(significance_dataset_id);
     H5Sselect_hyperslab(file_dataspace_significance, H5S_SELECT_SET, offset_significance, NULL, dims_significance, NULL);
 
+    hid_t file_dataspace_means = H5Dget_space(means_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_means, H5S_SELECT_SET, offset_means, NULL, dims_means, NULL);
+
+    hid_t file_dataspace_stds = H5Dget_space(stds_dataset_id);
+    H5Sselect_hyperslab(file_dataspace_stds, H5S_SELECT_SET, offset_stds, NULL, dims_stds, NULL);
+
     // Define the memory dataspace
     hid_t mem_dataspace_psids = H5Screate_simple(1, dims_psids, NULL);
+    hid_t mem_dataspace_ra = H5Screate_simple(1, dims_ra, NULL);
+    hid_t mem_dataspace_dec = H5Screate_simple(1, dims_dec, NULL);
+    hid_t mem_dataspace_valid = H5Screate_simple(1, dims_valid, NULL);
     hid_t mem_dataspace_bestFreqs = H5Screate_simple(1, dims_bestFreqs, NULL);
     hid_t mem_dataspace_significance = H5Screate_simple(1, dims_significance, NULL);
+    hid_t mem_dataspace_means = H5Screate_simple(1, dims_means, NULL);
+    hid_t mem_dataspace_stds = H5Screate_simple(1, dims_stds, NULL);
 
     // Write data to the selected hyperslab
     H5Dwrite(psids_dataset_id, H5T_NATIVE_ULONG, mem_dataspace_psids, file_dataspace_psids, H5P_DEFAULT, psids);
+    H5Dwrite(ra_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_ra, file_dataspace_ra, H5P_DEFAULT, ra);
+    H5Dwrite(dec_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_dec, file_dataspace_dec, H5P_DEFAULT, dec);
+    H5Dwrite(valid_dataset_id, H5T_NATIVE_USHORT, mem_dataspace_valid, file_dataspace_valid, H5P_DEFAULT, valid);
     H5Dwrite(bestFreqs_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_bestFreqs, file_dataspace_bestFreqs, H5P_DEFAULT, bestFreqs);
     H5Dwrite(significance_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_significance, file_dataspace_significance, H5P_DEFAULT, significance);
+    H5Dwrite(means_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_means, file_dataspace_means, H5P_DEFAULT, means);
+    H5Dwrite(stds_dataset_id, H5T_NATIVE_FLOAT, mem_dataspace_stds, file_dataspace_stds, H5P_DEFAULT, stdevs);
 
     // Close resources
     H5Sclose(mem_dataspace_psids);
+    H5Sclose(mem_dataspace_ra);
+    H5Sclose(mem_dataspace_dec);
+    H5Sclose(mem_dataspace_valid);
     H5Sclose(mem_dataspace_bestFreqs);
     H5Sclose(mem_dataspace_significance);
+    H5Sclose(mem_dataspace_means);
+    H5Sclose(mem_dataspace_stds);
     H5Sclose(file_dataspace_psids);
+    H5Sclose(file_dataspace_ra);
+    H5Sclose(file_dataspace_dec);
     H5Sclose(file_dataspace_bestFreqs);
     H5Sclose(file_dataspace_significance);
+    H5Sclose(file_dataspace_means);
+    H5Sclose(file_dataspace_stds);
     H5Dclose(psids_dataset_id);
+    H5Dclose(ra_dataset_id);
+    H5Dclose(dec_dataset_id);
     H5Dclose(bestFreqs_dataset_id);
     H5Dclose(significance_dataset_id);
+    H5Dclose(means_dataset_id);
+    H5Dclose(stds_dataset_id);
     H5Fclose(file_id);
 }

@@ -117,22 +117,14 @@ MatrixXf cudaRunFPW(VectorXf t_vec, MatrixXf y_mat, MatrixXf dy_mat, VectorXf fr
 
 /*Multibin FPW. Instead of passing a single integer value of N_bins we pass an array of N_bins values starting with the largest value.
 The following values must be factors of N_bins[0]. N_samples is then the length of N_bins and determines how much memory must be allocated.*/
-float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
+std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
                     int N_dat, int N_curves, int N_freqs,
                     int* N_bins, int N_freqs_batch, int N_curves_batch, int N_samples) {
-
-    // //time stuff
-    // float totalTime = 0.0f;
-    // cudaEvent_t start, stop;
-    // cudaEventCreate(&start);
-    // cudaEventCreate(&stop);
 
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
         N_bins_total += N_bins[i];
     }
-    // printf("N_dat: %d, N_curves: %d, N_freqs: %d\n", N_dat, N_curves, N_freqs);
-    // printf("N_bins_total: %d\n", N_bins_total);
 
     // Allocate memory for device arrays
     float* t;
@@ -161,13 +153,11 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
     dim3 gridSizeChi((N_freqs_batch + blockSizeChi.x - 1) / blockSizeChi.x, (N_curves + blockSizeChi.y - 1) / blockSizeChi.y);
     size_t sharedMemoryChi = 2 * N_bins[0] * blockSizeChi.x * blockSizeChi.y * sizeof(float);
 
-    // cout << "sharedMemoryChi: " << sharedMemoryChi / 1024 << endl;
-
     // Allocate memory for host array to hold the result
     float* deltaChi_host = new float[N_curves_batch * N_freqs_batch * N_samples];
 
     // Create a matrix to store the periodograms for each light curve
-    float* periodograms = new float[N_curves * N_freqs * N_samples];
+    std::vector<float> periodograms(N_curves * N_freqs * N_samples);
 
     //copy y and ivar to device
     float* ivar_host = new float[N_dat * N_curves];
@@ -175,10 +165,6 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
         ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
     }
 
-    // //diagnostics
-    // cout << "periodogram size " << N_curves * N_freqs * N_samples << endl;
-
-    // cudaEventRecord(start);
     // Run kernels for each batch of frequencies over all light curves
     for (int i=0; i < N_freqs; i += N_freqs_batch) {
         int N_freqs_current = min(N_freqs_batch, N_freqs - i);
@@ -204,29 +190,15 @@ float* cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_hos
 
             for (int k = 0; k < N_samples; k++) {
                 for (int l = 0; l < N_curves_current; l++) {
-                    memcpy(
-                        periodograms + l * N_samples * N_freqs + k * N_freqs + i,  // Destination
+                    std::copy(
                         deltaChi_host + k * N_curves_current * N_freqs_current + l * N_freqs_current,  // Source
-                        N_freqs_current * sizeof(float)  // Number of bytes to copy
+                        deltaChi_host + k * N_curves_current * N_freqs_current + (l + 1) * N_freqs_current,  // Source end
+                        periodograms.begin() + l * N_samples * N_freqs + k * N_freqs + i  // Destination
                     );
                 }
             }
         }
     }
-
-    // cudaEventRecord(stop);
-    // cudaEventSynchronize(stop);
-
-    // float milliseconds = 0;
-    // cudaEventElapsedTime(&milliseconds, start, stop);
-    // totalTime += milliseconds;
-    
-    // cout << "total time: " << totalTime << endl;
-
-    // cudaEventDestroy(start);
-    // cudaEventDestroy(stop);
-
-    // printf("execution time per LC per bin sample: %f ms\n", totalTime/ N_curves / N_samples); // Print the total time
 
     // Free device memory
     cudaFree(t);

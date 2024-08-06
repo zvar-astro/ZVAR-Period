@@ -25,6 +25,7 @@ add_executable(cudaFPW main.cu
                ../periodograms/FPW/wrappers.cu 
                ../statistics/polyfit.cu
                ../statistics/curve_statistics.cu
+               ../statistics/peak_utils.cu
                ../readwrite/hdf5_utils.cpp
                ../readwrite/filepaths.cpp
                ../msc/diagnostics.cpp

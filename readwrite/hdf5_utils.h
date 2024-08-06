@@ -18,6 +18,8 @@ typedef struct exposures {
 
 typedef struct sources {
   unsigned long psid;
+  float ra;
+  float dec;
 } sources;
 
 typedef struct sourcedata {
@@ -59,16 +61,15 @@ int get_sources(hid_t, unsigned long*, int, int);
 // given just the HDF5 filename rather than a table object
 int get_sources_wrapper(std::string, unsigned long*, int, int);
 
-// Function to read chunk of PANSTARRS IDs from sources table
-int get_sources_chunk(std::string, unsigned long*, unsigned long, unsigned long);
-
+// Function to read chunk of PANSTARRS IDs, RAs, and DECs from sources table
+int get_sources_chunk(std::string, unsigned long*, float*, float*, unsigned long, unsigned long);
 
 // Function to read data from sourcedata table
 int get_sourcedata(hid_t, float*, int);
 
 
 // Function to read chunk of data from sourcedata table
-int get_sourcedata_chunk(std::string, float*, float*, unsigned long, unsigned long, unsigned long, unsigned long);
+int get_sourcedata_chunk(std::string, float*, float*, unsigned short*, unsigned long, unsigned long, unsigned long, unsigned long);
 
 
 // Function to read sourcedata for list of object IDs from two HDF5 files
@@ -91,10 +92,10 @@ void normalizeLC(float*, int, int);
 void normalizeLC_dualband(float*, int, int, int, int);
 
 // Function to create a new HDF5 file to store periodogram results
-void writeResults(std::string, unsigned long*, float*, float*, int, int, int);
+void writeResults(std::string, int, int, int, int);
 
 // Function to append periodogram results to an existing HDF5 file
-void appendResults(std::string, unsigned long*, float*, float*, int, int, unsigned long);
+void appendResults(std::string, unsigned long*, float*, float*, unsigned short*, float*, float*, float*, float*, int, int, int, unsigned long);
 
 
 #endif

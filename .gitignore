@@ -7,3 +7,4 @@
 
 # Ignore VSCode settings
 .vscode/
+/test_main.cu
