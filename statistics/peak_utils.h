@@ -34,7 +34,7 @@ std::vector<int> flagTerrestrialFreq(
 
 // A peak finding function based on scipy.signal.find_peaks
 std::vector<int> find_peaks(
-  const std::vector<float>, // x
+  const std::vector<float>&, // x
   const int,                // Ntop
   const int,                // distance
   const float,              // mean

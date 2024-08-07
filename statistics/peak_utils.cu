@@ -126,30 +126,176 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 }
 
 
-std::vector<int> find_peaks(const std::vector<float> x, 
+// std::vector<int> find_peaks(const std::vector<float> x, 
+//                             const int Ntop,
+//                             const int distance,
+//                             const float mean,
+//                             const float stdev,
+//                             const float threshold) {
+
+//     /*
+//     Function to find peaks in a 1D array of values
+
+//     This is a C++ implementation of the scipy.signal.find_peaks
+//     function. It does not perform any smoothing and treats any
+//     point as a peak whose two neighboring points are lesser
+//     values.
+
+//     x         = 1D array of values
+//     Ntop      = number of peaks to return
+//     distance  = minimum distance between neighboring peaks
+//     mean      = periodogram mean
+//     stdev     = periodogram standard deviation
+//     threshold = S/N threshold for a peak [ S/N = (height-mean) / stdev ]
+//     */
+
+//     std::vector<int> midpoints;
+//     int numpeaks = 0;
+//     int i = 1; // Pointer to current sample (first one can't be a maximum)
+//     int i_max = x.size() - 1; // Last sample also can't be a maximum
+//     int i_ahead = i + 1; // Index to look ahead one sample
+//     float snr; // Param to store S/N of each periodogram value
+
+//     // Find the peaks
+//     while (i < i_max) {
+
+//         // First check that value exceeds threshold
+//         snr = (x[i] - mean) / stdev;
+//         if (snr < threshold) {
+//             i += 1;
+//             continue;
+//         }
+
+//         // Test if previous sample is smaller
+//         if (x[i - 1] < x[i]) {
+//             i_ahead = i + 1;
+
+//             // Find next sample unequal to x[i]
+//             while (i_ahead < i_max && x[i_ahead] == x[i]) {
+//                 i_ahead += 1;
+//             }
+
+//             // Maxima is found if next unequal sample is smaller than x[i]
+//             if (x[i_ahead] < x[i]) {
+//                 midpoints.push_back((i + i_ahead - 1) / 2);
+//                 i = i_ahead;
+//                 numpeaks += 1;
+//             }
+//         }
+//         i += 1;
+//     }
+
+//     // Create vector to store indices of the "Ntop" highest peaks
+//     std::vector<int> itop(Ntop);
+
+//     // First check that some peaks were found. If not, return all -1 values
+//     if (midpoints.size() < Ntop) {
+//         for (int i = 0; i < Ntop; i++) itop[i] = -1;
+//         return itop;
+//     }
+
+//     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//     /*
+//        This section will filter all of the peaks using the
+//        "distance" input parameter. Prioritizing peaks by
+//        height, other peaks that are within "distance"
+//        samples of a larger peak will be discarded.
+//     */
+
+//     // Create a vector containing peak heights
+//     std::vector<float> peak_heights(numpeaks,0.0f);
+//     for (int i = 0; i < numpeaks; i++) {
+//         peak_heights[i] = x[midpoints[i]];
+//     }
+
+//     // Create a boolean vector that will eventually identify
+//     // which peaks pass the distance filter
+//     std::vector<bool> keep(numpeaks, true);
+
+//     // Create vector to store indices of each value in "midpoints"
+//     std::vector<int> priority_to_position(numpeaks);
+//     std::iota(
+//         priority_to_position.begin(),
+//         priority_to_position.end(),
+//         0
+//     );
+
+//     // Sort priority_to_position vector in ascending order of peak heights
+//     std::stable_sort(
+//         priority_to_position.begin(), 
+//         priority_to_position.end(),
+//         [&peak_heights](int i1, int i2) { return peak_heights[i1] < peak_heights[i2]; }
+//     );
+
+//     // Iterate over peaks in order of highest priority first
+//     for (int i = numpeaks-1; i >= 0; --i) {
+
+//         // Translate i to j, where j points to current
+//         // peak whose neighbours are to be evaluated
+//         int j = priority_to_position[i];
+        
+//         // Skip evaluation for peaks already marked as "don't keep" 
+//         if (!keep[j]) {
+//             continue;
+//         }
+        
+//         int k = j - 1;
+//         // Flag earlier peaks for removal until minimal distance is exceeded
+//         while (k >= 0 && midpoints[j] - midpoints[k] < distance) {
+//             keep[k] = false;
+//             --k;
+//         }
+
+//         k = j + 1;
+//         // Flag later peaks for removal until minimal distance is exceeded
+//         while (k < numpeaks && midpoints[k] - midpoints[j] < distance) {
+//             keep[k] = false;
+//             ++k;
+//         }
+//     }
+
+
+//     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//     /*
+//        This section will iterate through all peaks in 
+//        descending height order and save indices of peaks
+//        where keep=True until the number of saved peak
+//        indices reaches "Ntop".
+//     */
+
+//     // Get indices of highest peaks
+//     int pcount = 0; // Counter to track number of peaks saved
+//     for (int i = numpeaks-1; i >= 0; --i) {
+        
+//         // Get pointer to peak position in the "midpoints" vector
+//         int j = priority_to_position[i];
+//         if (keep[j]) {
+//             itop[pcount] = midpoints[j];
+//             ++pcount; 
+//         }
+
+//         // Break out of the for-loop once "Ntop" peaks are saved
+//         if (pcount >= Ntop) break;
+//     }
+
+//     // Clear some memory
+//     std::vector<int>().swap(midpoints);
+//     std::vector<float>().swap(peak_heights);
+//     std::vector<bool>().swap(keep);
+//     std::vector<int>().swap(priority_to_position);
+    
+//     return itop;
+// }
+
+std::vector<int> find_peaks(const std::vector<float>& x, 
                             const int Ntop,
                             const int distance,
                             const float mean,
                             const float stdev,
                             const float threshold) {
 
-    /*
-    Function to find peaks in a 1D array of values
-
-    This is a C++ implementation of the scipy.signal.find_peaks
-    function. It does not perform any smoothing and treats any
-    point as a peak whose two neighboring points are lesser
-    values.
-
-    x         = 1D array of values
-    Ntop      = number of peaks to return
-    distance  = minimum distance between neighboring peaks
-    mean      = periodogram mean
-    stdev     = periodogram standard deviation
-    threshold = S/N threshold for a peak [ S/N = (height-mean) / stdev ]
-    */
-
     std::vector<int> midpoints;
+    midpoints.reserve(x.size() / 2); // Reserve memory to avoid frequent reallocations
     int numpeaks = 0;
     int i = 1; // Pointer to current sample (first one can't be a maximum)
     int i_max = x.size() - 1; // Last sample also can't be a maximum
@@ -186,24 +332,15 @@ std::vector<int> find_peaks(const std::vector<float> x,
     }
 
     // Create vector to store indices of the "Ntop" highest peaks
-    std::vector<int> itop(Ntop);
+    std::vector<int> itop(Ntop, -1);
 
     // First check that some peaks were found. If not, return all -1 values
     if (midpoints.size() < Ntop) {
-        for (int i = 0; i < Ntop; i++) itop[i] = -1;
         return itop;
     }
 
-    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    /*
-       This section will filter all of the peaks using the
-       "distance" input parameter. Prioritizing peaks by
-       height, other peaks that are within "distance"
-       samples of a larger peak will be discarded.
-    */
-
     // Create a vector containing peak heights
-    std::vector<float> peak_heights(numpeaks,0.0f);
+    std::vector<float> peak_heights(numpeaks);
     for (int i = 0; i < numpeaks; i++) {
         peak_heights[i] = x[midpoints[i]];
     }
@@ -214,31 +351,25 @@ std::vector<int> find_peaks(const std::vector<float> x,
 
     // Create vector to store indices of each value in "midpoints"
     std::vector<int> priority_to_position(numpeaks);
-    std::iota(
-        priority_to_position.begin(),
-        priority_to_position.end(),
-        0
-    );
+    std::iota(priority_to_position.begin(), priority_to_position.end(), 0);
 
     // Sort priority_to_position vector in ascending order of peak heights
-    std::stable_sort(
-        priority_to_position.begin(), 
-        priority_to_position.end(),
-        [&peak_heights](int i1, int i2) { return peak_heights[i1] < peak_heights[i2]; }
-    );
+    std::stable_sort(priority_to_position.begin(), priority_to_position.end(),
+                     [&peak_heights](int i1, int i2) { return peak_heights[i1] < peak_heights[i2]; });
+
 
     // Iterate over peaks in order of highest priority first
-    for (int i = numpeaks-1; i >= 0; --i) {
+    for (int i = numpeaks - 1; i >= 0; --i) {
 
         // Translate i to j, where j points to current
         // peak whose neighbours are to be evaluated
         int j = priority_to_position[i];
-        
+
         // Skip evaluation for peaks already marked as "don't keep" 
         if (!keep[j]) {
             continue;
         }
-        
+
         int k = j - 1;
         // Flag earlier peaks for removal until minimal distance is exceeded
         while (k >= 0 && midpoints[j] - midpoints[k] < distance) {
@@ -255,23 +386,15 @@ std::vector<int> find_peaks(const std::vector<float> x,
     }
 
 
-    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    /*
-       This section will iterate through all peaks in 
-       descending height order and save indices of peaks
-       where keep=True until the number of saved peak
-       indices reaches "Ntop".
-    */
-
     // Get indices of highest peaks
     int pcount = 0; // Counter to track number of peaks saved
-    for (int i = numpeaks-1; i >= 0; --i) {
-        
+    for (int i = numpeaks - 1; i >= 0; --i) {
+
         // Get pointer to peak position in the "midpoints" vector
         int j = priority_to_position[i];
         if (keep[j]) {
             itop[pcount] = midpoints[j];
-            ++pcount; 
+            ++pcount;
         }
 
         // Break out of the for-loop once "Ntop" peaks are saved
@@ -283,6 +406,5 @@ std::vector<int> find_peaks(const std::vector<float> x,
     std::vector<float>().swap(peak_heights);
     std::vector<bool>().swap(keep);
     std::vector<int>().swap(priority_to_position);
-    
     return itop;
 }

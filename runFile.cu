@@ -130,7 +130,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         auto start_postprocess = chrono::high_resolution_clock::now(); //Time computing post-process
 
         const int distance = 300;
-        const float threshold = 5.0f;
+        const float threshold = 7.0f;
         const int N_peaks = 50;
 
         vector<float> peakFrequencies(N_curves * N_samples * N_peaks, 0.0f);
@@ -144,6 +144,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
 
             float mean, stdev;
             std::tie(mean, stdev) = pg_stats(periodogramSlice);
+            // float threshold = 3.0f * stdev;
             std::vector<int> peakIndices = find_peaks(periodogramSlice, N_peaks, distance, mean, stdev, threshold);
 
             if (peakIndices[0] > 0) { // If any peaks were found
