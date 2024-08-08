@@ -100,7 +100,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         auto start_removebaseline = chrono::high_resolution_clock::now(); //Time removing baseline
 
         // Remove baseline from flux values
-        float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
+        vector<float> flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
 
         auto stop_removebaseline = chrono::high_resolution_clock::now();
         auto duration_removebaseline = chrono::duration_cast<chrono::milliseconds>(stop_removebaseline - start_removebaseline);
@@ -112,7 +112,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         int N_freq_batch = 1000000;
         int N_curves_batch = 100;
         float* t_host = time.data();
-        float* flux_host = flux_no_baseline;
+        float* flux_host = flux_no_baseline.data();
         float* fluxErr_host = fluxErr.data();
         float* fgrid_host = fgrid.data();
         int N_data = static_cast<int>(NEXP);
@@ -176,7 +176,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
                       N_curves, N_samples, N_peaks, objstart);
 
         // Free memory
-        delete[] flux_no_baseline;
+        vector<float>().swap(flux_no_baseline);
         vector<float>().swap(periodograms);
         vector<float>().swap(peakFrequencies);
         vector<float>().swap(peakSignificances);

@@ -1,6 +1,6 @@
 #include "polyfit.cuh"
 
-float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves, int modelID) {
+vector<float> removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves, int modelID) {
 
     int N_parameters = 0;
     switch (modelID) {
@@ -50,7 +50,7 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
     }
 
     // subtract the model y from the data y
-    float* y_no_baseline = new float[N_dat * N_curves];
+    vector<float> y_no_baseline(N_dat * N_curves);
     for (int i = 0; i < N_curves; ++i) {
         for (int j = 0; j < N_dat; ++j) {
             float y_model = 0;

@@ -1,0 +1,78 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Release-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.8"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"name" : "Release",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "ZVAR",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "oldExecutable::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-oldExecutable-Release-ca2e94cd665f43d865b2.json",
+					"name" : "oldExecutable",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "processMetaData::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-processMetaData-Release-b9c88eca6c4f9fe38cf7.json",
+					"name" : "processMetaData",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "processSourceChunk::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-processSourceChunk-Release-ad4d228e3b3f46397f32.json",
+					"name" : "processSourceChunk",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/data/swhitebook/github/ZVAR/build",
+		"source" : "/data/swhitebook/github/ZVAR"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

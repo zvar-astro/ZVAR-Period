@@ -6,7 +6,7 @@
 # It is included in the main 'build.ninja'.
 
 # =============================================================================
-# Project: cudaFPW
+# Project: ZVAR
 # Configurations: Release
 # =============================================================================
 # =============================================================================
@@ -22,7 +22,7 @@ rule CUSTOM_COMMAND
 #############################################
 # Rule for compiling CUDA files.
 
-rule CUDA_COMPILER__cudaFPW_Release
+rule CUDA_COMPILER__processMetaData_Release
   depfile = $DEP_FILE
   deps = gcc
   command = /usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -x cu -dc $in -o $out
@@ -32,7 +32,7 @@ rule CUDA_COMPILER__cudaFPW_Release
 #############################################
 # Rule for compiling CXX files.
 
-rule CXX_COMPILER__cudaFPW_Release
+rule CXX_COMPILER__processMetaData_Release
   depfile = $DEP_FILE
   deps = gcc
   command = /usr/bin/g++ $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
@@ -42,7 +42,7 @@ rule CXX_COMPILER__cudaFPW_Release
 #############################################
 # Rule for linking CXX executable.
 
-rule CXX_EXECUTABLE_DEVICE_LINKER__cudaFPW_Release
+rule CXX_EXECUTABLE_DEVICE_LINKER__processMetaData_Release
   command = /usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler $LANGUAGE_COMPILE_FLAGS $LINK_FLAGS -Xcompiler=-fPIC -Wno-deprecated-gpu-targets -shared -dlink $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES
   description = Linking CXX executable $TARGET_FILE
   restat = $RESTAT
@@ -51,7 +51,83 @@ rule CXX_EXECUTABLE_DEVICE_LINKER__cudaFPW_Release
 #############################################
 # Rule for linking CXX executable.
 
-rule CXX_EXECUTABLE_LINKER__cudaFPW_Release
+rule CXX_EXECUTABLE_LINKER__processMetaData_Release
+  command = $PRE_LINK && /usr/bin/g++ $FLAGS $LINK_FLAGS $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES && $POST_BUILD
+  description = Linking CXX executable $TARGET_FILE
+  restat = $RESTAT
+
+
+#############################################
+# Rule for compiling CUDA files.
+
+rule CUDA_COMPILER__processSourceChunk_Release
+  depfile = $DEP_FILE
+  deps = gcc
+  command = /usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -x cu -dc $in -o $out
+  description = Building CUDA object $out
+
+
+#############################################
+# Rule for compiling CXX files.
+
+rule CXX_COMPILER__processSourceChunk_Release
+  depfile = $DEP_FILE
+  deps = gcc
+  command = /usr/bin/g++ $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building CXX object $out
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_DEVICE_LINKER__processSourceChunk_Release
+  command = /usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler $LANGUAGE_COMPILE_FLAGS $LINK_FLAGS -Xcompiler=-fPIC -Wno-deprecated-gpu-targets -shared -dlink $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES
+  description = Linking CXX executable $TARGET_FILE
+  restat = $RESTAT
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_LINKER__processSourceChunk_Release
+  command = $PRE_LINK && /usr/bin/g++ $FLAGS $LINK_FLAGS $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES && $POST_BUILD
+  description = Linking CXX executable $TARGET_FILE
+  restat = $RESTAT
+
+
+#############################################
+# Rule for compiling CUDA files.
+
+rule CUDA_COMPILER__oldExecutable_Release
+  depfile = $DEP_FILE
+  deps = gcc
+  command = /usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -x cu -dc $in -o $out
+  description = Building CUDA object $out
+
+
+#############################################
+# Rule for compiling CXX files.
+
+rule CXX_COMPILER__oldExecutable_Release
+  depfile = $DEP_FILE
+  deps = gcc
+  command = /usr/bin/g++ $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building CXX object $out
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_DEVICE_LINKER__oldExecutable_Release
+  command = /usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler $LANGUAGE_COMPILE_FLAGS $LINK_FLAGS -Xcompiler=-fPIC -Wno-deprecated-gpu-targets -shared -dlink $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES
+  description = Linking CXX executable $TARGET_FILE
+  restat = $RESTAT
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_LINKER__oldExecutable_Release
   command = $PRE_LINK && /usr/bin/g++ $FLAGS $LINK_FLAGS $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES && $POST_BUILD
   description = Linking CXX executable $TARGET_FILE
   restat = $RESTAT

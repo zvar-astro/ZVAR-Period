@@ -80,7 +80,8 @@
         "__nullptr": "cpp",
         "__locale": "cpp",
         "dense": "cpp",
-        "filesystem": "cpp"
+        "filesystem": "cpp",
+        "processsourcechunk": "c"
     },
     "cmake.generator": "Ninja",
     "cmake.configureOnOpen": true

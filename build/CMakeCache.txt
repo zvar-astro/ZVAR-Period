@@ -159,7 +159,7 @@ CMAKE_PROJECT_DESCRIPTION:STATIC=
 CMAKE_PROJECT_HOMEPAGE_URL:STATIC=
 
 //Value Computed by CMake
-CMAKE_PROJECT_NAME:STATIC=cudaFPW
+CMAKE_PROJECT_NAME:STATIC=ZVAR
 
 //Path to a program.
 CMAKE_RANLIB:FILEPATH=/usr/bin/ranlib
@@ -365,9 +365,6 @@ CUDA_nvToolsExt_LIBRARY:FILEPATH=/usr/local/cuda/lib64/libnvToolsExt.so
 //Path to a library.
 CUDA_rt_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/librt.so
 
-//The directory containing a CMake configuration file for Gpufit.
-Gpufit_DIR:PATH=Gpufit_DIR-NOTFOUND
-
 //HDF5 CXX Wrapper compiler.  Used only to detect HDF5 compile
 // flags.
 HDF5_CXX_COMPILER_EXECUTABLE:FILEPATH=/usr/bin/h5c++
@@ -400,13 +397,13 @@ HDF5_DIFF_EXECUTABLE:FILEPATH=HDF5_DIFF_EXECUTABLE-NOTFOUND
 HDF5_DIR:PATH=HDF5_DIR-NOTFOUND
 
 //Value Computed by CMake
-cudaFPW_BINARY_DIR:STATIC=/data/swhitebook/github/ZVAR/build
+ZVAR_BINARY_DIR:STATIC=/data/swhitebook/github/ZVAR/build
 
 //Value Computed by CMake
-cudaFPW_IS_TOP_LEVEL:STATIC=ON
+ZVAR_IS_TOP_LEVEL:STATIC=ON
 
 //Value Computed by CMake
-cudaFPW_SOURCE_DIR:STATIC=/data/swhitebook/github/ZVAR
+ZVAR_SOURCE_DIR:STATIC=/data/swhitebook/github/ZVAR
 
 
 ########################

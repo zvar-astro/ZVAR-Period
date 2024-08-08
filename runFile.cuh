@@ -8,7 +8,7 @@
 #include "statistics/curve_statistics.cuh"
 #include "statistics/polyfit.cuh"
 #include "statistics/peak_utils.h"
-#include "msc/diagnostics.h"
+#include "execution/diagnostics.h"
 
 #include <iostream>
 #include <random>

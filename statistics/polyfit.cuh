@@ -1,8 +1,11 @@
 #ifndef POLYFIT_CUH
 #define POLYFIT_CUH
 
+#include <vector>
 #include <iostream>
 #include <gpufit.h>
+
+using namespace std;
 
 /**
  * @brief Fits N_curves polynomial models to N_curves light curves of identical length N_dat and subtracts the model from the data.
@@ -22,6 +25,6 @@
  * 
  * @throws std::invalid_argument If an invalid model ID is provided.
 */
-float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves, int modelID);
+vector<float> removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves, int modelID);
 
 #endif // POLYFIT_CUH
