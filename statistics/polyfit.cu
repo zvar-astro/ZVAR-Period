@@ -1,8 +1,4 @@
 #include "polyfit.cuh"
-#include <iostream>
-#include <fstream>
-#include <ostream>
-#include <random>
 
 float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves, int modelID) {
 
@@ -45,19 +41,17 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
     int max_n_iterations = 1000; // we care more about speed than accuracy, so n_iter is low.
     int estimator_id = LSE;  // Least squares estimator
     float* initial_parameters = new float[N_curves * N_parameters];
-    std::fill_n(initial_parameters, N_curves * N_parameters, 0.0f);
+    std::fill_n(initial_parameters, N_curves * N_parameters, 0.0f); // our initial guess is that the baseline is 0
     int* parameters_to_fit = new int[N_curves * N_parameters];
     std::fill_n(parameters_to_fit, N_curves * N_parameters, 1);
+    char* times_input = reinterpret_cast<char*>(times_fractional); // gpufit requires a char* for the times input
+    size_t user_info_size = sizeof(REAL) * N_dat;
 
     // Allocate memory for Gpufit output
     float* output_parameters = new float[N_curves * N_parameters];
     int* output_states = new int[N_curves];
     float* output_chi_squares = new float[N_curves];
     int* output_n_iterations = new int[N_curves];
-
-    char* times_input = reinterpret_cast<char*>(times_fractional);
-
-    size_t user_info_size = sizeof(REAL) * N_dat;
 
     // Call Gpufit
     int status = gpufit(N_curves, N_dat, y, weights, modelID, initial_parameters, tolerance, max_n_iterations, parameters_to_fit, estimator_id, 

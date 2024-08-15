@@ -338,10 +338,9 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     // Create vector to store indices of the "Ntop" highest peaks
     std::vector<int> itop(Ntop, -1);
 
-    // First check that some peaks were found. If not, return all -1 values
-    if (midpoints.size() < Ntop) {
+    // First check that some peaks were found.
+    if (midpoints.size() < 1) {
         return itop;
-        // for (int i = midpoints.size(); i < Ntop; i++) itop[i] = -1;
     }
 
     // Create a vector containing peak heights

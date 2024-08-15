@@ -153,6 +153,11 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
                 for (int j = 0; j < N_peaks; j++) {
                     peakFrequencies[i * N_peaks + j] = fgrid[peakIndices[j]];
                     peakSignificances[i * N_peaks + j] = (periodogramSlice[peakIndices[j]] - mean) / stdev;
+                    // If a value of peakSignificance is less than threshold, set it and the corresponding frequency to -1
+                    if (peakSignificances[i * N_peaks + j] < threshold) {
+                        peakFrequencies[i * N_peaks + j] = -1.0f;
+                        peakSignificances[i * N_peaks + j] = -1.0f;
+                    }
                 }
                 periodogramMeans[i] = mean;
                 periodogramStdevs[i] = stdev;

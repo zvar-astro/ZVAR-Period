@@ -1,6 +1,0 @@
-TODO:
-
-Add Prebuilt statistics routines
-
-Sam:
--Write baseline subtraction
