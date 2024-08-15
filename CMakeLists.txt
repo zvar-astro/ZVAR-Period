@@ -1,5 +1,5 @@
 # Specify the minimum version for CMake
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.9)
 
 # Project's name
 project(cudaFPW)
@@ -12,6 +12,8 @@ enable_language(CUDA)
 
 # Find CUDA package
 find_package(CUDA REQUIRED)
+
+find_package(OpenMP REQUIRED)
 
 # set(HDF5_ROOT /usr/local)
 find_package(HDF5 REQUIRED COMPONENTS CXX)
@@ -32,6 +34,7 @@ add_executable(cudaFPW main.cu
                runFile.cu)
 
 # Specify the CUDA standard
+set(CMAKE_BUILD_TYPE Release)
 set_property(TARGET cudaFPW 
              PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
@@ -44,6 +47,10 @@ include_directories("/data/swhitebook/Packages/eigen")
 include_directories("/data/swhitebook/Packages/Gpufit/Gpufit")
 
 target_link_libraries(cudaFPW PRIVATE /data/swhitebook/Packages/Gpufit/build/libGpufit.so)
+if(OpenMP_CXX_FOUND)
+    target_compile_options(cudaFPW PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>)
+    target_link_libraries(cudaFPW PRIVATE OpenMP::OpenMP_CXX)
+endif()
 
 # Add optimization flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")

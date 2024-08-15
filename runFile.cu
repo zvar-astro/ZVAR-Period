@@ -13,6 +13,8 @@
  * 
  */
 void runFile(int field, int ccd, int quad, std::string filter, std::string logpath) {
+    omp_set_num_threads(9);
+
     auto start_full = chrono::high_resolution_clock::now(); //Time full run
     auto start_preprocess = chrono::high_resolution_clock::now(); //Time loading and pre-processing
 
@@ -29,8 +31,8 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     vector<double> time_double(time.begin(), time.end());
 
     //FPW parameters
-    int N_samples = 4;
-    int* N_bins = new int[N_samples]{20, 10, 5, 4};
+    int N_samples = 3;
+    int* N_bins = new int[N_samples]{20, 10, 5};
 
     //Make frequency grid
     double fmin = 1.0 /(24 * 60 * 60); // 1 day
@@ -63,7 +65,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     // Initialize flux vectors in chunks
     std::vector<float> flux(NSRC_PER_CHUNK * NEXP, 0.0f);
     std::vector<float> fluxErr(NSRC_PER_CHUNK * NEXP, 1.0f);
-    std::vector<unsigned short> ratioValid(NSRC_PER_CHUNK, 0);
+    std::vector<float> ratioValid(NSRC_PER_CHUNK, 0);
     std::vector<unsigned long> psids(NSRC_PER_CHUNK, 0);
     std::vector<float> ra(NSRC_PER_CHUNK, 0.0f);
     std::vector<float> dec(NSRC_PER_CHUNK, 0.0f);
@@ -137,6 +139,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         vector<float> peakSignificances(N_curves * N_samples * N_peaks, 0.0f);
         vector<float> periodogramMeans(N_curves * N_samples, 0.0f);
         vector<float> periodogramStdevs(N_curves * N_samples, 0.0f);
+        #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < N_curves * N_samples; i++) {
             std::vector<float>::const_iterator first = periodograms.begin() + i * N_freqs;
             std::vector<float>::const_iterator last = periodograms.begin() + (i + 1) * N_freqs;
@@ -144,7 +147,6 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
 
             float mean, stdev;
             std::tie(mean, stdev) = pg_stats(periodogramSlice);
-            // float threshold = 3.0f * stdev;
             std::vector<int> peakIndices = find_peaks(periodogramSlice, N_peaks, distance, mean, stdev, threshold);
 
             if (peakIndices[0] > 0) { // If any peaks were found

@@ -12,6 +12,7 @@
 		[
 			"add_executable",
 			"target_link_libraries",
+			"target_compile_options",
 			"include_directories"
 		],
 		"files" : 
@@ -26,43 +27,55 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 21,
+				"line" : 23,
 				"parent" : 0
 			},
 			{
 				"command" : 1,
 				"file" : 0,
-				"line" : 39,
+				"line" : 42,
 				"parent" : 0
 			},
 			{
 				"command" : 1,
-				"file" : 0,
-				"line" : 40,
-				"parent" : 0
-			},
-			{
-				"command" : 1,
-				"file" : 0,
-				"line" : 46,
-				"parent" : 0
-			},
-			{
-				"command" : 2,
-				"file" : 0,
-				"line" : 18,
-				"parent" : 0
-			},
-			{
-				"command" : 2,
 				"file" : 0,
 				"line" : 43,
 				"parent" : 0
 			},
 			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 0
+			},
+			{
 				"command" : 2,
 				"file" : 0,
-				"line" : 44,
+				"line" : 51,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 20,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 46,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 52,
 				"parent" : 0
 			}
 		]
@@ -76,21 +89,25 @@
 					"fragment" : " -O3 -O3 -DNDEBUG"
 				},
 				{
+					"backtrace" : 5,
+					"fragment" : "-Xcompiler=-fopenmp"
+				},
+				{
 					"fragment" : "-std=c++17"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 5,
+					"backtrace" : 6,
 					"path" : "/usr/include/hdf5/serial"
 				},
 				{
-					"backtrace" : 6,
+					"backtrace" : 7,
 					"path" : "/data/swhitebook/Packages/eigen"
 				},
 				{
-					"backtrace" : 7,
+					"backtrace" : 8,
 					"path" : "/data/swhitebook/Packages/Gpufit/Gpufit"
 				}
 			],
@@ -121,21 +138,25 @@
 					"fragment" : " -O3 -O3 -DNDEBUG"
 				},
 				{
+					"backtrace" : 9,
+					"fragment" : "-fopenmp"
+				},
+				{
 					"fragment" : "-std=gnu++17"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 5,
+					"backtrace" : 6,
 					"path" : "/usr/include/hdf5/serial"
 				},
 				{
-					"backtrace" : 6,
+					"backtrace" : 7,
 					"path" : "/data/swhitebook/Packages/eigen"
 				},
 				{
-					"backtrace" : 7,
+					"backtrace" : 8,
 					"path" : "/data/swhitebook/Packages/Gpufit/Gpufit"
 				}
 			],
@@ -244,6 +265,15 @@
 			},
 			{
 				"fragment" : "-lpthread",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "/usr/lib/gcc/x86_64-linux-gnu/9/libgomp.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libpthread.so",
 				"role" : "libraries"
 			},
 			{

@@ -7,6 +7,9 @@ import time
 
 def run_cudaFPW(field, ccd, quad, band, device, stop_event):
     command = [
+        'taskset',
+        '-c',
+        str(9 * device) + '-' + str(9 * device + 8),
         './build/cudaFPW',
         str(field),
         str(ccd),

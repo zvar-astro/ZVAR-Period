@@ -96,6 +96,10 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
         {f_day/3,  0.01f / 86400},      // 3 day
         {f_day*2,  0.05f / 86400},      // 1/2 day
         {f_day*3,  0.05f / 86400},      // 1/3 day
+        {f_day * 3 / 2, 0.02f / 86400}, // 2/3 day
+        {f_day * 4 / 3, 0.02f / 86400}, // 3/4 day
+        {f_day * 5 / 2, 0.02f / 86400}, // 2/5 day
+        {f_day * 7 / 2, 0.02f / 86400}, // 2/7 day
         {f_day*4,  0.05f / 86400},      // 1/4 day
         {f_day*5,  0.05f / 86400},      // 1/5 day
         {f_day*6,  0.05f / 86400},      // 1/6 day
@@ -337,6 +341,7 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     // First check that some peaks were found. If not, return all -1 values
     if (midpoints.size() < Ntop) {
         return itop;
+        // for (int i = midpoints.size(); i < Ntop; i++) itop[i] = -1;
     }
 
     // Create a vector containing peak heights

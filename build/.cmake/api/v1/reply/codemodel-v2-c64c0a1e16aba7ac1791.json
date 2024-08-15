@@ -9,7 +9,7 @@
 					"jsonFile" : "directory-.-Release-f5ebdc15457944623624.json",
 					"minimumCMakeVersion" : 
 					{
-						"string" : "3.8"
+						"string" : "3.9"
 					},
 					"projectIndex" : 0,
 					"source" : ".",
@@ -39,7 +39,7 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "cudaFPW::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-cudaFPW-Release-b8790f103a3f3836fb47.json",
+					"jsonFile" : "target-cudaFPW-Release-32cddc1dcb70a5877c76.json",
 					"name" : "cudaFPW",
 					"projectIndex" : 0
 				}

@@ -1,4 +1,8 @@
 #include "polyfit.cuh"
+#include <iostream>
+#include <fstream>
+#include <ostream>
+#include <random>
 
 float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves, int modelID) {
 
@@ -21,6 +25,21 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
             break;
     }
 
+    //divide all times by the maximum time so the reinterpret_cast works
+    float* times_fractional = new float[N_dat];
+    float t_max = times[N_dat - 1];
+    for (int i = 0; i < N_dat; ++i) {
+        times_fractional[i] = times[i] / t_max;
+    }
+
+    //convert dy to weights
+    float* weights = new float[N_dat * N_curves];
+    for (int i = 0; i < N_curves; ++i) {
+        for (int j = 0; j < N_dat; ++j) {
+            weights[i * N_dat + j] = 1.0 / (dy[i * N_dat + j] * dy[i * N_dat + j]);
+        }
+    }
+
     // Define other Gpufit parameters
     float tolerance = 1e-4;
     int max_n_iterations = 1000; // we care more about speed than accuracy, so n_iter is low.
@@ -36,12 +55,12 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
     float* output_chi_squares = new float[N_curves];
     int* output_n_iterations = new int[N_curves];
 
-    char* times_input = reinterpret_cast<char*>(times);
+    char* times_input = reinterpret_cast<char*>(times_fractional);
 
     size_t user_info_size = sizeof(REAL) * N_dat;
 
     // Call Gpufit
-    int status = gpufit(N_curves, N_dat, y, dy, modelID, initial_parameters, tolerance, max_n_iterations, parameters_to_fit, estimator_id, 
+    int status = gpufit(N_curves, N_dat, y, weights, modelID, initial_parameters, tolerance, max_n_iterations, parameters_to_fit, estimator_id, 
                         user_info_size, times_input, output_parameters, output_states, output_chi_squares, output_n_iterations);
 
     // Check status
@@ -52,16 +71,25 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
     // subtract the model y from the data y
     float* y_no_baseline = new float[N_dat * N_curves];
     for (int i = 0; i < N_curves; ++i) {
-        for (int j = 0; j < N_dat; ++j) {
-            float y_model = 0;
-            for (int k = 0; k < N_parameters; ++k) {
-                y_model += output_parameters[i * N_parameters + k] * pow(times[j], N_parameters - 1 - k);
+        if (output_states[i] == 0) { // Only subtract the model if the fit was successful
+            for (int j = 0; j < N_dat; ++j) {
+                float y_model = 0;
+                for (int k = 0; k < N_parameters; ++k) {
+                    y_model += output_parameters[i * N_parameters + k] * pow(times[j], N_parameters - 1 - k) / pow(t_max, N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
+                }
+                y_no_baseline[i * N_dat + j] = y[i * N_dat + j] - y_model;
             }
-            y_no_baseline[i * N_dat + j] = y[i * N_dat + j] - y_model;
         }
-    }       
+        else {
+            for (int j = 0; j < N_dat; ++j) {
+                y_no_baseline[i * N_dat + j] = y[i * N_dat + j];
+            }
+        }
+    }
 
     // Free allocated memory
+    delete[] times_fractional;
+    delete[] weights;
     delete[] initial_parameters;
     delete[] parameters_to_fit;
     delete[] output_parameters;

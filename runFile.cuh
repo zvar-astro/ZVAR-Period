@@ -17,6 +17,7 @@
 #include <string>
 #include <iomanip>
 #include <tuple>
+#include <omp.h>
 
 using namespace std;
 

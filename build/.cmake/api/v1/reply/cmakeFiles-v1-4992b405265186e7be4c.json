@@ -203,6 +203,26 @@
 		{
 			"isCMake" : true,
 			"isExternal" : true,
+			"path" : "/data/swhitebook/cmake/share/cmake-3.21/Modules/FindOpenMP.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/data/swhitebook/cmake/share/cmake-3.21/Modules/CMakeParseImplicitLinkInfo.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/data/swhitebook/cmake/share/cmake-3.21/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/data/swhitebook/cmake/share/cmake-3.21/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
 			"path" : "/data/swhitebook/cmake/share/cmake-3.21/Modules/FindHDF5.cmake"
 		},
 		{
