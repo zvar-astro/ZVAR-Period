@@ -24,7 +24,7 @@
 #include <omp.h>
 #include <thrust/complex.h>
 #include "hdf5_utils.h"
-#include "peak_utils.h"
+#include "../../statistics/peak_utils.h"
 #include "hdf5.h"
 
 namespace fs = std::experimental::filesystem;
