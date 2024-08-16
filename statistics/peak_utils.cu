@@ -1,4 +1,8 @@
-// Functions for peak finding
+// Functions for peak finding, periodogram statistics
+// and filtering of terrestrial frequencies.
+//
+// Author: Zach Vanderbosch (Caltech)
+//  Edits: Sam Whitebook (caltech)
 
 #include <tuple>
 #include <iostream>
@@ -20,7 +24,7 @@ float mean(std::vector<float> v) {
 
     float sum = std::accumulate(std::begin(v), std::end(v), 0.0);
     float avg =  sum / v.size();
-    
+
     return avg;
 }
 
@@ -32,7 +36,7 @@ float stdev(std::vector<float> v) {
 
     v = vector of values
     */
-    
+
     const float m = mean(v);
     float accum = 0.0f;
     std::for_each (std::begin(v), std::end(v), [&](const float d) {
@@ -47,12 +51,12 @@ float stdev(std::vector<float> v) {
 std::tuple<float, float> pg_stats(std::vector<float> v) {
 
     /*
-    Function to calculate periodogram statistics, namely the 
+    Function to calculate periodogram statistics, namely the
     periodogram mean and standard deviation
 
     v = vector of values
     */
-    
+
     const float m = mean(v);
     float accum = 0.0f;
     std::for_each (std::begin(v), std::end(v), [&](const float d) {
@@ -66,14 +70,14 @@ std::tuple<float, float> pg_stats(std::vector<float> v) {
 
 std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 
-    /* 
+    /*
     Function to identify and flag terrestrial frequencies
     from an array of frequency values.
 
     frequencies = pointer to array of frequencies
     Nfreq       = number of frequencies
     */
-    
+
     // Define some standard frequencies in terms of Hz
     float f_year = 0.002737803f / 86400;   // Sidereal year (365.256363 days)
     float f_lunar = 0.036600996f / 86400;  // Lunar sidereal month (27.321661 days)
@@ -109,14 +113,14 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
         {f_day*10, 0.05f / 86400}       // 1/10 day
     };
     size_t Nregions = ef.size();
-    
+
     // Create vector to store keep/discard indices
     std::vector<int> keepFreq(Nfreq,1);
-    
+
     // Iterate over all frequencies
     for (int i = 0; i < Nfreq; i++) {
         for (int j = 0; j < Nregions; j++) {
-            if ((frequencies[i] > ef[j].first - ef[j].second) && 
+            if ((frequencies[i] > ef[j].first - ef[j].second) &&
                 (frequencies[i] < ef[j].first + ef[j].second)) {
                 keepFreq[i] = 0;
             }
@@ -125,18 +129,35 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 
     // Clear memory
     std::vector<std::pair<float,float>>().swap(ef);
-  
+
     return keepFreq;
 }
 
 
 
-std::vector<int> find_peaks(const std::vector<float>& x, 
+std::vector<int> find_peaks(const std::vector<float>& x,
                             const int Ntop,
                             const int distance,
                             const float mean,
                             const float stdev,
                             const float threshold) {
+
+    /*
+    Function to find peaks in a 1D array of values
+
+    This is a C++ implementation of the scipy.signal.find_peaks
+    function. It does not perform any smoothing and treats any
+    point as a peak whose two neighboring points are lesser
+    values, with options to apply constraints on the peak
+    heights and the minimum distance between neighboring peaks.
+
+    x         = Vector of periodogram values
+    Ntop      = number of peaks to return
+    distance  = minimum distance between neighboring peaks
+    mean      = periodogram mean
+    stdev     = periodogram standard deviation
+    threshold = S/N threshold for a peak [ S/N = (height-mean) / stdev ]
+    */
 
     std::vector<int> midpoints;
     midpoints.reserve(x.size() / 2); // Reserve memory to avoid frequent reallocations
@@ -209,7 +230,7 @@ std::vector<int> find_peaks(const std::vector<float>& x,
         // peak whose neighbours are to be evaluated
         int j = priority_to_position[i];
 
-        // Skip evaluation for peaks already marked as "don't keep" 
+        // Skip evaluation for peaks already marked as "don't keep"
         if (!keep[j]) {
             continue;
         }
