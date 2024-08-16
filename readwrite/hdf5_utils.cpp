@@ -13,15 +13,22 @@
 
 
 void check_status(int status) {
-  /* Function to check status of reading HDF5 files */
+  /*
+  Function to check status of reading HDF5 files
+
+  status = Status of HDF5 file read
+  */
   assert(status == 0);
 }
 
-
 int get_number_of_rows(hid_t dataset) {
-    
-    /* Calculate number of rows in the dataset */
-    
+
+    /*
+    Calculate number of rows in the dataset
+
+    dataset = HDF5 dataset object
+    */
+
     hid_t dspace;
     int ndims;
 
@@ -30,16 +37,26 @@ int get_number_of_rows(hid_t dataset) {
     if (ndims != 1) return(0);
     hsize_t dims[ndims];
     H5Sget_simple_extent_dims(dspace,dims,NULL);
-    
+
     return(dims[0]);
 }
 
-int get_number_of_rows_wrapper(std::string filename, 
+int get_number_of_rows_wrapper(std::string filename,
                                std::string tablename) {
+
+  /*
+  A wrapper function for the get_number_of_rows function.
+  Does the same thing as get_number_of_rows, but as input
+  this function only requires the HDF5 filename and
+  table name rather than an hid_t table object
+
+  filename  = Name of HDF5 file
+  tablename = Name of HDF5 table
+  */
 
   // Create file/table objects
   hid_t file, group, table;
-  
+
   // Open HDF5 file
   file = H5Fopen(filename.c_str(),H5F_ACC_RDONLY,H5P_DEFAULT);
   group = H5Gopen2(file,"/data",H5P_DEFAULT);
@@ -60,18 +77,25 @@ int get_number_of_rows_wrapper(std::string filename,
 
 int get_exposures(hid_t table, double *bjd, int begin, int N) {
 
-  /* Function that grabs BJD timestamps
-     from exposures table */
-  
+  /*
+  Function that grabs BJD timestamps
+  from exposures table
+
+  table = HDF5 table object
+  bjd   = Array pointer to store BJD timestamps
+  begin = Index at which to start storing data
+  N     = Number of BJD timestamps
+  */
+
   int status;
   exposures *data;
-  
+
   // Read data from HDF5 table
   hid_t exposures_tid = H5Tcreate(H5T_COMPOUND,sizeof(exposures));
   H5Tinsert(exposures_tid,"bjd",HOFFSET(exposures,bjd),H5T_NATIVE_DOUBLE);
   data = (exposures *) malloc(sizeof(exposures)*N);
   status = H5Dread(table,exposures_tid,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
-  
+
   // Populate BJD array with values
   for (int i = 0; i < N; i++) {
     bjd[i+begin] = data[i].bjd;
@@ -87,15 +111,27 @@ int get_exposures(hid_t table, double *bjd, int begin, int N) {
 int get_exposures_wrapper(std::string filename,
                           double *bjd, int begin, int N) {
 
+  /*
+  A wrapper function for the get_exposures function.
+  Does the same thing as get_exposures, but as input
+  this function only requires the HDF5 filename
+  rather than an hid_t table object
+
+  filename = Name of HDF5 file
+  bjd      = Array pointer to store BJD timestamps
+  begin    = Index at which to start storing data
+  N        = Number of BJD timestamps to read
+  */
+
   // Create file/table objects
   int status;
   hid_t file, group, table;
-  
+
   // Open HDF5 file
   file = H5Fopen(filename.c_str(),H5F_ACC_RDONLY,H5P_DEFAULT);
   group = H5Gopen2(file,"/data",H5P_DEFAULT);
   table = H5Dopen2(group,"/data/exposures",H5P_DEFAULT);
-  
+
   // Get timestamp data
   status = get_exposures(table, bjd, begin, N);
 
@@ -109,9 +145,16 @@ int get_exposures_wrapper(std::string filename,
 
 
 int get_sources(hid_t table, unsigned long *psid, int begin, int N) {
-  
-  /* Function that grabs the Pan-STARRS IDs
-     for all objects in the sources table */
+
+  /*
+  Function that grabs the Pan-STARRS IDs
+  for all objects in the sources table
+
+  table = HDF5 table object
+  psid  = Array pointer to store Pan-STARRS IDs
+  begin = Index at which to start storing data
+  N     = Number of Pan-STARRS IDs
+  */
 
   int status;
   sources *data;
@@ -126,10 +169,10 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N) {
   for (int i = 0; i < N; i++) {
     psid[i+begin] = data[i].psid;
   }
-  
+
   // Deallocate memory
   free(data);
-  
+
   return status;
 }
 
@@ -137,15 +180,27 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N) {
 int get_sources_wrapper(std::string filename,
                         unsigned long *psid, int begin, int N) {
 
+  /*
+  A wrapper function for the get_sources function.
+  Does the same thing as get_sources, but as input
+  this function only requires the HDF5 filename
+  rather than an hid_t table object
+
+  filename = Name of HDF5 file
+  psid     = Array pointer to store Pan-STARRS IDs
+  begin    = Index at which to start storing data
+  N        = Number of Pan-STARRS IDs to read
+  */
+
   // Create file/table objects
   int status;
   hid_t file, group, table;
-  
+
   // Open HDF5 file
   file = H5Fopen(filename.c_str(),H5F_ACC_RDONLY,H5P_DEFAULT);
   group = H5Gopen2(file,"/data",H5P_DEFAULT);
   table = H5Dopen2(group,"/data/sources",H5P_DEFAULT);
-  
+
   // Get timestamp data
   status = get_sources(table, psid, begin, N);
 
@@ -224,13 +279,19 @@ int get_sources_chunk(std::string filename, unsigned long *psids, float *ra, flo
 
 
 int get_sourcedata(hid_t table, float *flux, int N) {
-  
-  /* Function that grabs flux values for all
-     sources from the sourcedata table */
+
+  /*
+  Function that grabs flux values for all
+  sources from the sourcedata table
+
+  table = HDF5 table object
+  flux  = Array pointer to store flux values
+  N     = Number of flux values per source
+  */
 
   int status;
   sourcedata *data;
-  
+
   // Read data from HDF5 file
   hid_t sourcedata_tid = H5Tcreate(H5T_COMPOUND, sizeof(sourcedata));
   H5Tinsert(sourcedata_tid,"flux",HOFFSET(sourcedata,flux),H5T_NATIVE_FLOAT);
@@ -258,19 +319,18 @@ int get_sourcedata(hid_t table, float *flux, int N) {
 int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, float* ratioValid, unsigned long objstart, 
   unsigned long objnum, unsigned long N, unsigned long numentry) {
 
-  /* 
+  /*
   Function that reads a contiguous chunk
-  of data from the sourcedata table 
-  
-  filename = Name of HDF5 file
-  flux     = Array pointer to store flux values
-  fluxErr = Array pointer to store flux errors
+  of data from the sourcedata table
+
+  filename   = Name of HDF5 file
+  flux       = Array pointer to store flux values
+  fluxErr    = Array pointer to store flux errors
   ratioValid = Array pointer to store what percentage of a light curve is valid
-  objstart = Object number at which to start reading data
-  objnum   = Number of objects to read
-  N        = Number of observations per object
-  numentry = Number of entries reserved per source within flux
-             including padding
+  objstart   = Object number at which to start reading data
+  objnum     = Number of objects to read
+  N          = Number of observations per object
+  numentry   = Number of entries reserved per source within flux, including padding
   */
 
   int status;
@@ -489,7 +549,7 @@ int get_sourcedata_byobj_dualband(std::string filename1,
       // Deallocate memory
       free(data);
       status = H5Sclose(memspace);
-    } 
+    }
   }
 
   // Close HDF5 table and files
@@ -515,11 +575,11 @@ float calcMedian(std::vector<float> flux, size_t N) {
 
   /*
   Function to calculation median of flux values
-  
+
   flux = Vector containing flux values
   N    = Number of flux values in vector
   */
-  
+
   float median;
 
   std::sort(flux.begin(), flux.end());
@@ -532,12 +592,12 @@ float calcMedian(std::vector<float> flux, size_t N) {
 
 void calcDeviations(float *deviations, float *flux, float median, size_t N) {
 
-  /* 
+  /*
   Calculate absolute deviations between flux
   values and the median
-  
+
   dev    = Deviations between flux and median
-  flux   = Flux values 
+  flux   = Flux values
   median = Median of flux values
   N      = Number of flux values
   */
@@ -550,7 +610,7 @@ void calcDeviations(float *deviations, float *flux, float median, size_t N) {
 
 void normalizeLC(float *flux, int N_s, int N_d) {
 
-  /* 
+  /*
   Function to median-zero and normalize the flux
   values for each source.
 
@@ -558,12 +618,12 @@ void normalizeLC(float *flux, int N_s, int N_d) {
   N_s  = Number of sources
   N_d  = Number of flux values per source
   */
-  
+
   size_t size;
   float median, MAD;
   std::vector<float> nzflux;
   std::vector<float> deviations;
-  
+
   // Iterate over each source
   for (int i = 0; i < N_s; i++) {
 
@@ -586,12 +646,12 @@ void normalizeLC(float *flux, int N_s, int N_d) {
       median = 0.0f;
       MAD = 1.0f;
     }
-    
+
     // Now subtract median and normalize by MAD
     for (int j = 0; j < N_d; j++) {
       flux[i*N_d+j] = (flux[i*N_d+j] - median) / MAD;
     }
-    
+
     // Erase elements from nzflux and deviations
     for(int j = size-1; j >= 0; j--) {
       nzflux.erase(nzflux.begin() + j); 
