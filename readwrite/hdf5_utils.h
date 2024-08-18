@@ -67,8 +67,17 @@ int get_sourcedata(hid_t, float*, int);
 
 
 // Function to read chunk of data from sourcedata table
-int get_sourcedata_chunk(std::string, float*, float*, float*, unsigned long, unsigned long, unsigned long, unsigned long);
-
+//int get_sourcedata_chunk(std::string, float*, float*, float*, unsigned long, unsigned long, unsigned long, unsigned long);
+int get_sourcedata_chunk(
+  std::string,                 // filename
+  float*,                      // flux
+  float*,                      // fluxErr
+  float*,                      // ratioValid
+  std::vector<unsigned char>&, // keep
+  unsigned long,               // objstart
+  unsigned long,               // objnum
+  unsigned long                // numentry
+);
 
 // Function to calculate median of flux values
 float calcMedian(std::vector<float>, size_t);
@@ -85,8 +94,15 @@ void normalizeLC(float*, int, int);
 // Function to create a new HDF5 file to store periodogram results
 void writeResults(std::string, int, int, int, int);
 
+
 // Function to append periodogram results to an existing HDF5 file
 void appendResults(std::string, unsigned long*, float*, float*, float*, float*, float*, float*, float*, int, int, int, unsigned long);
 
+
+// Function to find and flag deep drilling time stamps
+std::vector<unsigned char> flagDeepDrilling(
+  std::vector<double>,  // time
+  int                   // N_d
+);
 
 #endif

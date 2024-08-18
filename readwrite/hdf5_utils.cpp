@@ -8,6 +8,7 @@
 #include <string>
 #include <cmath>
 #include <algorithm>
+#include <numeric>
 #include "hdf5.h"
 #include "hdf5_utils.h"
 
@@ -251,8 +252,14 @@ int get_sourcedata(hid_t table, float *flux, int N) {
 
 
 
-int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, float* ratioValid, unsigned long objstart, 
-  unsigned long objnum, unsigned long N, unsigned long numentry) {
+int get_sourcedata_chunk(std::string filename,
+                         float* flux,
+                         float* fluxErr,
+                         float* ratioValid,
+                         std::vector<unsigned char>& keep,
+                         unsigned long objstart,
+                         unsigned long objnum,
+                         unsigned long numentry) {
 
   /*
   Function that reads a contiguous chunk
@@ -262,9 +269,9 @@ int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, floa
   flux       = Array pointer to store flux values
   fluxErr    = Array pointer to store flux errors
   ratioValid = Array pointer to store what percentage of a light curve is valid
+  keep       = Array indicating non-deep drilling time stamps (1=keep, 0=ignore)
   objstart   = Object number at which to start reading data
   objnum     = Number of objects to read
-  N          = Number of observations per object
   numentry   = Number of entries reserved per source within flux, including padding
   */
 
@@ -272,6 +279,9 @@ int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, floa
   sourcedata *data;
   hid_t file, group, table;
   hid_t dataspace, memspace;
+
+  // Get data dimensions from the keep vector
+  int N = keep.size();  // Original number of exposures per source
 
   // Open HDF5 files
   file = H5Fopen(filename.c_str(),H5F_ACC_RDONLY,H5P_DEFAULT);
@@ -301,20 +311,25 @@ int get_sourcedata_chunk(std::string filename, float *flux, float* fluxErr, floa
   status = H5Dread(table,sourcedata_tid,memspace,dataspace,H5P_DEFAULT,data);
 
   // Populate flux array with values
+  int k; // Points to index within flux and fluxErr
   for (int i = 0; i < objnum; i++) {
+    k = 0; // Reset k-index for each source
     int validCount = 0;
     for (int j = 0; j < N; j++) {
-      if (std::isnan(data[i*N+j].flux)) {
-        flux[i*numentry+j] = 0.0f;
-        fluxErr[i*numentry+j] = INFINITY;
-      }
-      else {
-        flux[i*numentry+j] = data[i*N+j].flux;
-        fluxErr[i*numentry+j] = data[i*N+j].fluxErr;
-        validCount++;
+      if (keep[j] == 1) {
+        if (std::isnan(data[i*N+j].flux)) {
+          flux[i*numentry+k] = data[i*N+j].flux;
+          fluxErr[i*numentry+k] = INFINITY;
+        }
+        else {
+          flux[i*numentry+k] = data[i*N+j].flux;
+          fluxErr[i*numentry+k] = data[i*N+j].fluxErr;
+          validCount++;
+        }
+        k++;
       }
     }
-    ratioValid[i] = static_cast<float>(validCount) / static_cast<float>(N);
+    ratioValid[i] = static_cast<float>(validCount) / static_cast<float>(k);
   }
 
   // Deallocate memory
@@ -633,4 +648,87 @@ void appendResults(std::string filename, unsigned long* psids, float* ra, float*
     H5Dclose(means_dataset_id);
     H5Dclose(stds_dataset_id);
     H5Fclose(file_id);
+}
+
+
+
+std::vector<unsigned char> flagDeepDrilling(std::vector<double> time, int N_d) {
+
+  /*
+  Function to identify any timestamps within light
+  curve associated with ZTF deep drilling observations
+
+  time = Array of times in Julian Date (JD) format
+  N_d = Number of exposures per source
+  */
+
+  // Get all unique integer JDs when data were acquired
+  std::vector<int> jd;
+  std::vector<int> unique_jd;
+  for (int i = 0; i < N_d; i++) {
+    jd.push_back(std::floor(time[i]));
+    unique_jd.push_back(std::floor(time[i]));
+  }
+  std::sort(unique_jd.begin(), unique_jd.end());
+  unique_jd.erase(std::unique(unique_jd.begin(), unique_jd.end()), unique_jd.end());
+  int Njd = unique_jd.size();
+
+  // Create boolean vector to indicate which time stamps should be kept
+  std::vector<unsigned char> keep(N_d, 1);
+
+  // Create some vectors to populate during each iteration
+  std::vector<int> indices;
+  std::vector<double> time_slice;
+
+  // Iterate over unique days and find number of observations per day
+  int count = 0;
+  for (int i = 0; i < Njd; i++) {
+
+    // Count how many time stamps fall within a given day
+    count = std::count(jd.begin(), jd.end(), unique_jd[i]);
+
+    // Get indices of all observations on this day
+    for (int j = 0; j < N_d; j++) {
+      if (std::floor(time[j]) == unique_jd[i]) {
+        indices.push_back(j);
+        time_slice.push_back(time[j]);
+      }
+    }
+
+    // When enough data points are present, check time sampling
+    // Using 20 as the limit in order to skip over the triplet
+    // program observations, which will always have no more than
+    // 15 observations per field per night
+    if (count >= 20) {
+
+      // Get differences between successive values
+      std::adjacent_difference(
+        time_slice.begin(),
+        time_slice.end(),
+        time_slice.begin()
+      );
+
+      // Set first element to equal second element
+      time_slice[0] = time_slice[1];
+
+      // Determine whether a time stamp is deep drilling
+      for (int j = 0; j < count; j++) {
+        if (time_slice[j] < 0.003472222) { // i.e. < 5-minutes
+          keep[indices[j]] = 0;
+        }
+      }
+    }
+
+    // Erase vector values
+    indices.clear();
+    time_slice.clear();
+  }
+
+  // Clear memory
+  std::vector<int>().swap(jd);
+  std::vector<int>().swap(unique_jd);
+  std::vector<int>().swap(indices);
+  std::vector<double>().swap(time_slice);
+
+  return keep;
 }
