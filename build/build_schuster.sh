@@ -3,7 +3,7 @@
 HDF5_INCLUDE="/usr/include/hdf5/serial/"
 HDF5_LIBRARY="/usr/lib/x86_64-linux-gnu/hdf5/serial/"
 SCHUSTER_CUFILE="../periodograms/schuster/schuster_quad_sf.cu"
-HDF5_UTILS_CUFILE="../periodograms/schuster/hdf5_utils.cu"
+HDF5_UTILS_CUFILE="../readwrite/hdf5_utils.cpp"
 PEAK_FINDING_CUFILE="../statistics/peak_utils.cu"
 
 # Compile the schuster program
