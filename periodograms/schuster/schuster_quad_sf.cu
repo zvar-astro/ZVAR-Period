@@ -22,10 +22,10 @@
 #include <experimental/filesystem>
 
 #include <omp.h>
-#include <thrust/complex.h>
-#include "hdf5_utils.h"
-#include "../../statistics/peak_utils.h"
 #include "hdf5.h"
+#include <thrust/complex.h>
+#include "../../readwrite/hdf5_utils.h"
+#include "../../statistics/peak_utils.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -125,10 +125,10 @@ __global__ void pgramStats(float *pgram,
      N_f = Number of frequencies (un-padded)
      N_f_padded = Number of frequencies (padded)
   */
-  
+
   // Calculate the global index for each thread
   long int row = blockIdx.x * blockDim.x + threadIdx.x; // Indicates the source
-  
+
   // Calculate mean
   float mean = 0.0f;
   for (int i = 0; i < N_f; i++) {
@@ -418,7 +418,7 @@ int main(int argc, char const *argv[]) {
   while ( bytesSincos / NCHUNK_SINCOS > bytesMaxSincos ) {
     ++NCHUNK_SINCOS;
   }
-  
+
   // Determine number of frequencies per chunk (using ceiling of INT division)
   long int NFREQ_PER_CHUNK = 1 + ((NFREQ_PADDED - 1) / NCHUNK_SINCOS);
 
@@ -471,6 +471,8 @@ int main(int argc, char const *argv[]) {
 
   // Generate arrays to store flux, grid, and periodogram values
   std::vector<float> h_flux(NSRC_PADDED * NEXP_PADDED, 0.0f);
+  std::vector<float> h_fluxerr(NSRC_PADDED * NEXP_PADDED, 0.0f);
+  std::vector<float> h_ratioValid(NSRC_PADDED, 0.0f);
   std::vector<float> h_grid(NFREQ_PADDED, 0.0f);
   std::vector<float> h_pgram(NFREQ_PADDED * NSRC_PADDED, 0.0f);
 
@@ -533,7 +535,7 @@ int main(int argc, char const *argv[]) {
   int pgram_execution_time = 0; // Milliseconds
   int stats_execution_time = 0; // Milliseconds
   int peaks_execution_time = 0; // Milliseconds
-  
+
   if (!quiet) {
     std::cout << "\n  Kernel Execution" << std::endl;
     std::cout << "  -------------------------------------" << std::endl;
@@ -587,14 +589,23 @@ int main(int argc, char const *argv[]) {
 
       // Load the flux values and normalize the light curves
       std::chrono::steady_clock::time_point t_loadLC_begin = std::chrono::steady_clock::now();
-      status = get_sourcedata_chunk(hdf_filename, h_flux.data(), dd_index, objstart, objnum, NEXP_PADDED);
+      status = get_sourcedata_chunk(
+        hdf_filename,
+        h_flux.data(),
+        h_fluxerr.data(),
+        h_ratioValid.data(),
+        dd_index,
+        objstart,
+        objnum,
+        NEXP_PADDED
+      );
       check_status(status);
       normalizeLC(h_flux.data(), objnum, NEXP_PADDED);
 
       // Copy flux data to GPU
       std::chrono::steady_clock::time_point t_pgram_begin = std::chrono::steady_clock::now();
       cudaMemcpy(d_flux, h_flux.data(), bytesFlux, cudaMemcpyHostToDevice);
-  
+
       // Launch periodogram kernel
       pgramCalc<<<blocks2, threads>>>(d_flux, d_sincos, d_pgram, NEXP_PADDED, NFREQ_PADDED);
 
@@ -763,6 +774,8 @@ int main(int argc, char const *argv[]) {
   std::vector<unsigned long>().swap(h_psid);
   std::vector<float>().swap(h_time);
   std::vector<float>().swap(h_flux);
+  std::vector<float>().swap(h_fluxerr);
+  std::vector<float>().swap(h_ratioValid);
   std::vector<float>().swap(h_grid_full);
   std::vector<float>().swap(h_grid);
   std::vector<float>().swap(h_pgram);
