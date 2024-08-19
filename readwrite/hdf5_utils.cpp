@@ -214,6 +214,73 @@ int get_sources_wrapper(std::string filename,
 }
 
 
+int get_sources_chunk(std::string filename, unsigned long *psids, float *ra, float *dec, unsigned long objstart, unsigned long objnum) {
+
+  /*
+  Function to read a contiguous chunk of data from the sources table
+  Used to return Pan-STARRS IDs for a subset of objects
+
+  filename = Name of HDF5 file
+  psids    = Array pointer to store Pan-STARRS IDs
+  ra       = Array pointer to store RA coordinates
+  dec      = Array pointer to store Dec coordinates
+  objstart = Object number at which to start reading data
+  objnum   = Number of objects to read
+  */
+
+  int status;
+  sources *data;
+  hid_t file, group, table;
+  hid_t dataspace, memspace;
+
+  // Open HDF5 files
+  file = H5Fopen(filename.c_str(),H5F_ACC_RDONLY,H5P_DEFAULT);
+  group = H5Gopen2(file,"/data",H5P_DEFAULT);
+
+  // Open table
+  table = H5Dopen2(group,"/data/sources",H5P_DEFAULT);
+
+  // Define hyperslab in the dataset
+  dataspace = H5Dget_space(table);
+  hsize_t offset[] = {objstart};
+  hsize_t count[] = {objnum};
+  status = H5Sselect_hyperslab(dataspace,H5S_SELECT_SET,offset,NULL,count,NULL);
+
+  // Define memory hyperslap
+  hsize_t dim[] = {objnum};
+  memspace = H5Screate_simple(1,dim,NULL);
+  hsize_t offset_out[] = {0};
+  hsize_t count_out[] = {objnum};
+  status = H5Sselect_hyperslab(memspace,H5S_SELECT_SET,offset_out,NULL,count_out,NULL);
+
+  // Read data from table
+  hid_t sources_tid = H5Tcreate(H5T_COMPOUND,sizeof(sources));
+  H5Tinsert(sources_tid,"gaia_id",HOFFSET(sources,psid),H5T_NATIVE_ULONG);
+  H5Tinsert(sources_tid,"ra",HOFFSET(sources,ra),H5T_NATIVE_FLOAT);
+  H5Tinsert(sources_tid,"decl",HOFFSET(sources,dec),H5T_NATIVE_FLOAT);
+  data = (sources *) malloc(sizeof(sources)*objnum);
+  status = H5Dread(table,sources_tid,memspace,dataspace,H5P_DEFAULT,data);
+
+  // Populate psid array with values
+  for (int i = 0; i < objnum; i++) {
+    psids[i] = data[i].psid;
+    ra[i] = data[i].ra;
+    dec[i] = data[i].dec;
+  }
+
+  // Deallocate memory
+  free(data);
+  H5Sclose(memspace);
+
+  // Close files
+  H5Dclose(table);
+  H5Gclose(group);
+  H5Fclose(file);
+
+  return status;
+}
+
+
 int get_sourcedata(hid_t table, float *flux, int N) {
 
   /*

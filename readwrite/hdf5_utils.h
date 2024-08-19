@@ -62,6 +62,10 @@ int get_sources(hid_t, unsigned long*, int, int);
 int get_sources_wrapper(std::string, unsigned long*, int, int);
 
 
+// Function to read chunk of PANSTARRS IDs, RAs, and DECs from sources table
+int get_sources_chunk(std::string, unsigned long*, float*, float*, unsigned long, unsigned long);
+
+
 // Function to read data from sourcedata table
 int get_sourcedata(hid_t, float*, int);
 
