@@ -9,24 +9,20 @@
 #include <cstdlib>
 #include <cassert>
 #include <iostream>
-#include <iomanip>
 #include <fstream>
 #include <tuple>
 #include <vector>
-#include <string>
-#include <sstream>
 #include <numeric>
 #include <algorithm>
 #include <chrono>
-#include <experimental/filesystem>
 #include <omp.h>
 
 #include "hdf5.h"
 #include "../../readwrite/hdf5_utils.h"
 #include "../../statistics/peak_utils.h"
+#include "utils.h"
 #include "kernels.h"
 
-namespace fs = std::experimental::filesystem;
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // Some global parameters
@@ -51,13 +47,6 @@ const float THRESHOLD = 5.0f;       // Minimum S/N threshold required for peaks
 
 // Set max number of CPU threads to use during parallelization
 const int MAX_CPU_THREADS = 8;
-
-// Set base directory for forced photometry HDF5 matchfiles
-std::string MATCHFILE_DIR = "/data/zvar/matchfiles/";
-
-// Set base directory to save final period detections
-std::string PERIOD_DIR = "/data/zvar/periods/";
-
 
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -117,32 +106,13 @@ int main(int argc, char const *argv[]) {
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Define some filenames
 
+
   // Define the forced photometry HDF5 filename
-  std::stringstream ssh;
-  ssh << MATCHFILE_DIR;
-  ssh << std::setfill('0') << std::setw(4) << field << "/data_";
-  ssh << std::setfill('0') << std::setw(4) << field << "_";
-  ssh << std::setfill('0') << std::setw(2) << ccd << "_";
-  ssh << quad << "_z" << filter << ".h5";
-  std::string hdf_filename = ssh.str();
+  std::string hdf_filename = getHDFFilename(field, ccd, quad, filter);
 
-  // Define directories/filename to store 
+  // Define directories/filename to store
   // Schuster Periodogram (SP) period detections
-  std::stringstream ssp;
-  ssp << PERIOD_DIR;
-  std::string period_path = ssp.str();
-  ssp << std::setfill('0') << std::setw(4) << field;
-  std::string period_field_path = ssp.str();
-  ssp << "/periods_SP_";
-  ssp << std::setfill('0') << std::setw(4) << field << "_";
-  ssp << std::setfill('0') << std::setw(2) << ccd << "_";
-  ssp << quad << "_z" << filter << ".dat";
-  std::string peakfilename = ssp.str();
-
-  // Create directories if they don't already exist
-  fs::create_directory(period_path); // create PERIOD_DIR
-  fs::create_directory(period_field_path); // create PERIOD_DIR/field folder
-
+  std::string peakfilename = getPeakFilename(field, ccd, quad, filter);
 
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   // Some initial setup and GPU selection

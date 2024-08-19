@@ -6,6 +6,8 @@
 #include <cmath>
 #include <thrust/complex.h>
 
+#ifndef SCHUSTER_KERNELS_H
+#define SCHUSTER_KERNELS_H
 
 __global__ void sincosCalc(
   const float*,            // time,
@@ -32,3 +34,5 @@ __global__ void pgramStats(
   long int, // N_f
   long int  // N_f_paddded
 );
+
+#endif
