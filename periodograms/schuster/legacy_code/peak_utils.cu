@@ -127,7 +127,7 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 }
 
 
-std::vector<int> find_peaks(const std::vector<float> x, 
+std::vector<int> find_peaks(const std::vector<float>& x,
                             const int Ntop,
                             const int distance,
                             const float mean,
@@ -223,7 +223,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
 
     // Sort priority_to_position vector in ascending order of peak heights
     std::stable_sort(
-        priority_to_position.begin(), 
+        priority_to_position.begin(),
         priority_to_position.end(),
         [&peak_heights](int i1, int i2) { return peak_heights[i1] < peak_heights[i2]; }
     );
@@ -234,12 +234,12 @@ std::vector<int> find_peaks(const std::vector<float> x,
         // Translate i to j, where j points to current
         // peak whose neighbours are to be evaluated
         int j = priority_to_position[i];
-        
-        // Skip evaluation for peaks already marked as "don't keep" 
+
+        // Skip evaluation for peaks already marked as "don't keep"
         if (!keep[j]) {
             continue;
         }
-        
+
         int k = j - 1;
         // Flag earlier peaks for removal until minimal distance is exceeded
         while (k >= 0 && midpoints[j] - midpoints[k] < distance) {
@@ -258,7 +258,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
 
     // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     /*
-       This section will iterate through all peaks in 
+       This section will iterate through all peaks in
        descending height order and save indices of peaks
        where keep=True until the number of saved peak
        indices reaches "Ntop".
@@ -267,7 +267,7 @@ std::vector<int> find_peaks(const std::vector<float> x,
     // Get indices of highest peaks
     int pcount = 0; // Counter to track number of peaks saved
     for (int i = numpeaks-1; i >= 0; --i) {
-        
+
         // Get pointer to peak position in the "midpoints" vector
         int j = priority_to_position[i];
         if (keep[j]) {
@@ -284,6 +284,6 @@ std::vector<int> find_peaks(const std::vector<float> x,
     std::vector<float>().swap(peak_heights);
     std::vector<bool>().swap(keep);
     std::vector<int>().swap(priority_to_position);
-    
+
     return itop;
 }

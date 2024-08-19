@@ -11,7 +11,6 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
-#include <cmath>
 #include <tuple>
 #include <vector>
 #include <string>
@@ -20,12 +19,12 @@
 #include <algorithm>
 #include <chrono>
 #include <experimental/filesystem>
-
 #include <omp.h>
-#include <thrust/complex.h>
-#include "hdf5_utils.h"
-#include "peak_utils.h"
+
 #include "hdf5.h"
+#include "../../readwrite/hdf5_utils.h"
+#include "../../statistics/peak_utils.h"
+#include "kernels.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -59,93 +58,6 @@ std::string MATCHFILE_DIR = "/data/zvar/matchfiles/";
 // Set base directory to save final period detections
 std::string PERIOD_DIR = "/data/zvar/periods/";
 
-
-
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-// Kernel Code
-
-
-__global__ void sincosCalc(const float *time,
-                           const float *grid,
-                           thrust::complex<float> *sincos,
-                           const float pi,
-                           long int N_f) {
-
-  /* Kernel for calculating matrix of sine/cosine terms 
-     N_f = Number of frequencies (padded)
-  */
-
-  // Calculate the global indices for each threadi
-  long int col = blockIdx.x * blockDim.x + threadIdx.x; // Indicates the frequency
-  long int row = blockIdx.y * blockDim.y + threadIdx.y; // Indicates the exposure
-
-  // Calculate each term
-  sincos[row*N_f+col] = thrust::complex<float>(
-    std::cos(2.0f * pi * grid[col] * time[row]),
-    std::sin(2.0f * pi * grid[col] * time[row])
-  );
-}
-
-
-__global__ void pgramCalc(const float *flux,
-                          thrust::complex<float> *sincos, 
-                          float *pgram,
-                          long int N_d,
-                          long int N_f) {
-
-  /* Kernel for calcuating the Schuster periodogram
-     N_d = Number of data points per source
-     N_f = Number of frequencies (padded)
-  */
-  
-  // Calculate the global indices for each threadi
-  long int col = blockIdx.x * blockDim.x + threadIdx.x; // Indicates the frequency
-  long int row = blockIdx.y * blockDim.y + threadIdx.y; // Indicates the source
-  
-  thrust::complex<float> complexSum = thrust::complex<float>(0.0f,0.0f);
-  for (int i = 0; i < N_d; i++) {
-    complexSum += flux[row*N_d+i] * sincos[i*N_f+col];
-  }
-  
-  // Take absolute value and normalize to get periodogram
-  pgram[row*N_f+col] = (
-    std::pow(complexSum.real(),2) + 
-    std::pow(complexSum.imag(),2)
-  ) / static_cast<float>(N_d);
-}
-
-
-__global__ void pgramStats(float *pgram, 
-                           float *pg_mean,
-                           float *pg_stdev,
-                           long int N_f, 
-                           long int N_f_padded) {
-
-  /* Kernel for calcuating Mean and StDev of each periodogram
-     N_f = Number of frequencies (un-padded)
-     N_f_padded = Number of frequencies (padded)
-  */
-  
-  // Calculate the global index for each thread
-  long int row = blockIdx.x * blockDim.x + threadIdx.x; // Indicates the source
-  
-  // Calculate mean
-  float mean = 0.0f;
-  for (int i = 0; i < N_f; i++) {
-    mean += pgram[row*N_f_padded+i];
-  }
-  mean = mean / N_f;
-  pg_mean[row] = mean;
-
-  // Calculate standard deviation
-  float stdev = 0.0f;
-  for (int i = 0; i < N_f; i++) {
-    stdev += (pgram[row*N_f_padded+i] - mean) * 
-             (pgram[row*N_f_padded+i] - mean);
-  }
-  stdev = std::sqrt(stdev / (N_f-1));
-  pg_stdev[row] = stdev;
-}
 
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -418,7 +330,7 @@ int main(int argc, char const *argv[]) {
   while ( bytesSincos / NCHUNK_SINCOS > bytesMaxSincos ) {
     ++NCHUNK_SINCOS;
   }
-  
+
   // Determine number of frequencies per chunk (using ceiling of INT division)
   long int NFREQ_PER_CHUNK = 1 + ((NFREQ_PADDED - 1) / NCHUNK_SINCOS);
 
@@ -471,6 +383,8 @@ int main(int argc, char const *argv[]) {
 
   // Generate arrays to store flux, grid, and periodogram values
   std::vector<float> h_flux(NSRC_PADDED * NEXP_PADDED, 0.0f);
+  std::vector<float> h_fluxerr(NSRC_PADDED * NEXP_PADDED, 0.0f);
+  std::vector<float> h_ratioValid(NSRC_PADDED, 0.0f);
   std::vector<float> h_grid(NFREQ_PADDED, 0.0f);
   std::vector<float> h_pgram(NFREQ_PADDED * NSRC_PADDED, 0.0f);
 
@@ -533,7 +447,7 @@ int main(int argc, char const *argv[]) {
   int pgram_execution_time = 0; // Milliseconds
   int stats_execution_time = 0; // Milliseconds
   int peaks_execution_time = 0; // Milliseconds
-  
+
   if (!quiet) {
     std::cout << "\n  Kernel Execution" << std::endl;
     std::cout << "  -------------------------------------" << std::endl;
@@ -587,14 +501,23 @@ int main(int argc, char const *argv[]) {
 
       // Load the flux values and normalize the light curves
       std::chrono::steady_clock::time_point t_loadLC_begin = std::chrono::steady_clock::now();
-      status = get_sourcedata_chunk(hdf_filename, h_flux.data(), dd_index, objstart, objnum, NEXP_PADDED);
+      status = get_sourcedata_chunk(
+        hdf_filename,
+        h_flux.data(),
+        h_fluxerr.data(),
+        h_ratioValid.data(),
+        dd_index,
+        objstart,
+        objnum,
+        NEXP_PADDED
+      );
       check_status(status);
       normalizeLC(h_flux.data(), objnum, NEXP_PADDED);
 
       // Copy flux data to GPU
       std::chrono::steady_clock::time_point t_pgram_begin = std::chrono::steady_clock::now();
       cudaMemcpy(d_flux, h_flux.data(), bytesFlux, cudaMemcpyHostToDevice);
-  
+
       // Launch periodogram kernel
       pgramCalc<<<blocks2, threads>>>(d_flux, d_sincos, d_pgram, NEXP_PADDED, NFREQ_PADDED);
 
@@ -763,6 +686,8 @@ int main(int argc, char const *argv[]) {
   std::vector<unsigned long>().swap(h_psid);
   std::vector<float>().swap(h_time);
   std::vector<float>().swap(h_flux);
+  std::vector<float>().swap(h_fluxerr);
+  std::vector<float>().swap(h_ratioValid);
   std::vector<float>().swap(h_grid_full);
   std::vector<float>().swap(h_grid);
   std::vector<float>().swap(h_pgram);
