@@ -79,38 +79,38 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
     */
 
     // Define some standard frequencies in terms of Hz
-    float f_year = 0.002737803f / 86400;   // Sidereal year (365.256363 days)
-    float f_lunar = 0.036600996f / 86400;  // Lunar sidereal month (27.321661 days)
-    float f_day = 1.00273719f / 86400;     // Sidereal day (23.9344696 hours)
+    float f_year = 0.002737803f;   // Sidereal year (365.256363 days)
+    float f_lunar = 0.036600996f;  // Lunar sidereal month (27.321661 days)
+    float f_day = 1.00273719f;     // Sidereal day (23.9344696 hours)
 
     // Vector of frequency/width pairs indicating the
     // regions to be excluded from the frequencies vector
     std::vector<std::pair<float,float>> ef = {
-        {f_year,   0.00025f / 86400},   // 1 year
-        {f_year/2, 0.000125f / 86400},  // 2 year
-        {f_year/3, 0.0000835f / 86400}, // 3 year
-        {f_year/4, 0.0000625f / 86400}, // 4 year
-        {f_year/5, 0.0000500f / 86400}, // 5 year
-        {f_year*2, 0.00025f / 86400},   // 1/2 year
-        {f_year*3, 0.00025f / 86400},   // 1/3 year
-        {f_year*4, 0.00025f / 86400},   // 1/4 year
-        {f_lunar,  0.005f / 86400},     // 1 lunar month
-        {f_day,    0.05f / 86400},      // 1 day
-        {f_day/2,  0.02f / 86400},      // 2 day
-        {f_day/3,  0.01f / 86400},      // 3 day
-        {f_day*2,  0.05f / 86400},      // 1/2 day
-        {f_day*3,  0.05f / 86400},      // 1/3 day
-        {f_day * 3 / 2, 0.02f / 86400}, // 2/3 day
-        {f_day * 4 / 3, 0.02f / 86400}, // 3/4 day
-        {f_day * 5 / 2, 0.02f / 86400}, // 2/5 day
-        {f_day * 7 / 2, 0.02f / 86400}, // 2/7 day
-        {f_day*4,  0.05f / 86400},      // 1/4 day
-        {f_day*5,  0.05f / 86400},      // 1/5 day
-        {f_day*6,  0.05f / 86400},      // 1/6 day
-        {f_day*7,  0.05f / 86400},      // 1/7 day
-        {f_day*8,  0.05f / 86400},      // 1/8 day
-        {f_day*9,  0.05f / 86400},      // 1/9 day
-        {f_day*10, 0.05f / 86400}       // 1/10 day
+        {f_year,   0.00025f},   // 1 year
+        {f_year/2, 0.000125f},  // 2 year
+        {f_year/3, 0.0000835f}, // 3 year
+        {f_year/4, 0.0000625f}, // 4 year
+        {f_year/5, 0.0000500f}, // 5 year
+        {f_year*2, 0.00025f},   // 1/2 year
+        {f_year*3, 0.00025f},   // 1/3 year
+        {f_year*4, 0.00025f},   // 1/4 year
+        {f_lunar,  0.005f},     // 1 lunar month
+        {f_day,    0.05f},      // 1 day
+        {f_day/2,  0.02f},      // 2 day
+        {f_day/3,  0.01f},      // 3 day
+        {f_day*2,  0.05f},      // 1/2 day
+        {f_day*3,  0.05f},      // 1/3 day
+        {f_day*3 / 2, 0.02f},   // 2/3 day
+        {f_day*4 / 3, 0.02f},   // 3/4 day
+        {f_day*5 / 2, 0.02f},   // 2/5 day
+        {f_day*7 / 2, 0.02f},   // 2/7 day
+        {f_day*4,  0.05f},      // 1/4 day
+        {f_day*5,  0.05f},      // 1/5 day
+        {f_day*6,  0.05f},      // 1/6 day
+        {f_day*7,  0.05f},      // 1/7 day
+        {f_day*8,  0.05f},      // 1/8 day
+        {f_day*9,  0.05f},      // 1/9 day
+        {f_day*10, 0.05f}       // 1/10 day
     };
     size_t Nregions = ef.size();
 
