@@ -103,29 +103,21 @@ int main(int argc, char const *argv[]) {
     }
   }
 
-  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-  // Define some filenames
-
-
-  // Define the forced photometry HDF5 filename
-  std::string hdf_filename = getHDFFilename(field, ccd, quad, filter);
-
-  // Define directories/filename to store
-  // Schuster Periodogram (SP) period detections
-  std::string peakfilename = getPeakFilename(field, ccd, quad, filter);
-
-  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-  // Some initial setup and GPU selection
-
+  // Print out processing info
   std::cout << "Processing Field " << field;
   std::cout << ", CCD " << ccd;
   std::cout << ", Quad " << quad;
   std::cout << ", " << filter << "-band" << std::endl;
 
+
+  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  // Set GPU Device and Max CPU threads
+
   // Set number of CPU threads for parallelization
   omp_set_num_threads(MAX_CPU_THREADS);
 
-  // Get GPU global memory (restricting to 90% of max memory)
+  // Set device and get GPU global memory
+  // (restricting mem usage to 90% of max memory)
   cudaSetDevice(deviceNum);
   cudaDeviceProp device_prop;
   cudaGetDeviceProperties(&device_prop, deviceNum);
@@ -140,6 +132,17 @@ int main(int argc, char const *argv[]) {
     printf("  %.2f GB Global Memory\n", static_cast<float>(bytesGlobal) / (1<<30));
     printf("  Limiting Memory Usage to %.2f GB\n", static_cast<float>(bytesMax) / (1<<30));
   }
+
+
+  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  // Define some filenames
+
+  // Define the forced photometry HDF5 filename
+  std::string hdf_filename = getHDFFilename(field, ccd, quad, filter);
+
+  // Define directories/filename to store
+  // Schuster Periodogram (SP) period detections
+  std::string peakfilename = getPeakFilename(field, ccd, quad, filter);
 
 
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
