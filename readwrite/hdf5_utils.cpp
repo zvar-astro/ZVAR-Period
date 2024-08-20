@@ -110,7 +110,9 @@ int get_exposures(hid_t table, double *bjd, int begin, int N) {
 
 
 int get_exposures_wrapper(std::string filename,
-                          double *bjd, int begin, int N) {
+                          double *bjd,
+                          int begin,
+                          int N) {
 
   /*
   A wrapper function for the get_exposures function.
@@ -179,7 +181,9 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N) {
 
 
 int get_sources_wrapper(std::string filename,
-                        unsigned long *psid, int begin, int N) {
+                        unsigned long *psid,
+                        int begin,
+                        int N) {
 
   /*
   A wrapper function for the get_sources function.
@@ -214,7 +218,12 @@ int get_sources_wrapper(std::string filename,
 }
 
 
-int get_sources_chunk(std::string filename, unsigned long *psids, float *ra, float *dec, unsigned long objstart, unsigned long objnum) {
+int get_sources_chunk(std::string filename,
+                      unsigned long *psids,
+                      float *ra,
+                      float *dec,
+                      unsigned long objstart,
+                      unsigned long objnum) {
 
   /*
   Function to read a contiguous chunk of data from the sources table
