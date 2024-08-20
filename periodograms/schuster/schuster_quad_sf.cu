@@ -163,10 +163,9 @@ int main(int argc, char const *argv[]) {
   NEXP = get_number_of_rows_wrapper(hdf_filename, "/data/exposures");
   NSRC = get_number_of_rows_wrapper(hdf_filename, "/data/sources");
 
-  // Use NEXP and NSRC to initialize BJD, time, and sourceID vectors
+  // Use NEXP and NSRC to initialize BJD, sourceID, ra/dec vectors
   std::vector<double> h_bjd(NEXP,0.0);        // BJD must be read in with double precision
   std::vector<unsigned long> h_psid(NSRC,0);  // Source IDs
-
 
   // Read HDF5 tables and load into vectors
   int status;
