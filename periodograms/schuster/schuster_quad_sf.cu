@@ -163,15 +163,10 @@ int main(int argc, char const *argv[]) {
   NEXP = get_number_of_rows_wrapper(hdf_filename, "/data/exposures");
   NSRC = get_number_of_rows_wrapper(hdf_filename, "/data/sources");
 
-  // Use NEXP and NSRC to initialize BJD, sourceID, ra/dec vectors
-  std::vector<double> h_bjd(NEXP,0.0);        // BJD must be read in with double precision
-  std::vector<unsigned long> h_psid(NSRC,0);  // Source IDs
-
-  // Read HDF5 tables and load into vectors
+  // Use NEXP to initialize BJD vector
   int status;
+  std::vector<double> h_bjd(NEXP,0.0); // BJD must be read in with double precision
   status = get_exposures_wrapper(hdf_filename, h_bjd.data(), 0, NEXP);
-  check_status(status);
-  status = get_sources_wrapper(hdf_filename, h_psid.data(), 0, NSRC);
   check_status(status);
 
   // Get indices of non-deep drilling time stamps
@@ -655,7 +650,6 @@ int main(int argc, char const *argv[]) {
 
   // Free all vectors from host (CPU) memory
   std::vector<double>().swap(h_bjd);
-  std::vector<unsigned long>().swap(h_psid);
   std::vector<float>().swap(h_time);
   std::vector<float>().swap(h_flux);
   std::vector<float>().swap(h_fluxerr);
