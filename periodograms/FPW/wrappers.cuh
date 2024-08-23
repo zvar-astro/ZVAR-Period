@@ -4,6 +4,7 @@
 #include "kernels.cuh"
 #include "cpu_functions.h"
 #include "../../msc/diagnostics.h"
+#include <omp.h>
 
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
                     int N_dat, int N_curves, int N_freqs,

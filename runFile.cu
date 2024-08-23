@@ -58,7 +58,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     // Load in flux values while iterating over chunks of sources
     // Define Chunk parameters
     int status;
-    unsigned long NCHUNK = 100;
+    unsigned long NCHUNK = 50;
     unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
     unsigned long objstart, objnum;
 
@@ -112,7 +112,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         auto start_periodogram = chrono::high_resolution_clock::now(); //Time running periodogram
 
         int N_freq_batch = 1000000;
-        int N_curves_batch = 100;
+        int N_curves_batch = 500;
         float* t_host = time.data();
         float* flux_host = flux_no_baseline;
         float* fluxErr_host = fluxErr.data();
