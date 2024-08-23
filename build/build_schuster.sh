@@ -1,0 +1,14 @@
+#!/bin/bash
+
+HDF5_INCLUDE="/usr/include/hdf5/serial/"
+HDF5_LIBRARY="/usr/lib/x86_64-linux-gnu/hdf5/serial/"
+SCHUSTER_CUFILE="../periodograms/schuster/schuster_quad_sf.cu"
+KERNELS_CUFILE="../periodograms/schuster/kernels.cu"
+GENERAL_UTILS_CUFILE="../periodograms/schuster/utils.cu"
+HDF5_UTILS_CUFILE="../readwrite/hdf5_utils.cpp"
+PEAK_FINDING_CUFILE="../statistics/peak_utils.cu"
+
+# Compile the schuster program
+nvcc $SCHUSTER_CUFILE $KERNELS_CUFILE $GENERAL_UTILS_CUFILE $HDF5_UTILS_CUFILE $PEAK_FINDING_CUFILE -o schuster -I $HDF5_INCLUDE -L $HDF5_LIBRARY -std=c++17 -lhdf5 -lstdc++fs -Xcompiler -fopenmp -lgomp -O3 -DEBUG
+
+exit 0

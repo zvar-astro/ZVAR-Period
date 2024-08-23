@@ -61,20 +61,27 @@ int get_sources(hid_t, unsigned long*, int, int);
 // given just the HDF5 filename rather than a table object
 int get_sources_wrapper(std::string, unsigned long*, int, int);
 
+
 // Function to read chunk of PANSTARRS IDs, RAs, and DECs from sources table
 int get_sources_chunk(std::string, unsigned long*, float*, float*, unsigned long, unsigned long);
+
 
 // Function to read data from sourcedata table
 int get_sourcedata(hid_t, float*, int);
 
 
 // Function to read chunk of data from sourcedata table
-int get_sourcedata_chunk(std::string, float*, float*, float*, unsigned long, unsigned long, unsigned long, unsigned long);
-
-
-// Function to read sourcedata for list of object IDs from two HDF5 files
-int get_sourcedata_byobj_dualband(std::string, std::string, std::vector<unsigned long>, float*, int, int, unsigned long, unsigned long, int);
-
+//int get_sourcedata_chunk(std::string, float*, float*, float*, unsigned long, unsigned long, unsigned long, unsigned long);
+int get_sourcedata_chunk(
+  std::string,                 // filename
+  float*,                      // flux
+  float*,                      // fluxErr
+  float*,                      // ratioValid
+  std::vector<unsigned char>&, // keep
+  unsigned long,               // objstart
+  unsigned long,               // objnum
+  unsigned long                // numentry
+);
 
 // Function to calculate median of flux values
 float calcMedian(std::vector<float>, size_t);
@@ -88,14 +95,18 @@ void calcDeviations(float*, float*, float, size_t);
 void normalizeLC(float*, int, int);
 
 
-// Function to normalize flux values for dual-band data
-void normalizeLC_dualband(float*, int, int, int, int);
-
 // Function to create a new HDF5 file to store periodogram results
 void writeResults(std::string, int, int, int, int);
+
 
 // Function to append periodogram results to an existing HDF5 file
 void appendResults(std::string, unsigned long*, float*, float*, float*, float*, float*, float*, float*, int, int, int, unsigned long);
 
+
+// Function to find and flag deep drilling time stamps
+std::vector<unsigned char> flagDeepDrilling(
+  std::vector<double>,  // time
+  int                   // N_d
+);
 
 #endif
