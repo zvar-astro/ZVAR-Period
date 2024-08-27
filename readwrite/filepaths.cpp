@@ -67,28 +67,39 @@ std::string writeOutputFilePath(const int field, const int ccd, const int quad, 
  * @param filename The path to the HDF5 file.
  * @return A tuple containing the number of exposures, number of sources, and time vector.
  */
-std::tuple<unsigned int, unsigned int, std::vector<float>> initializeFrameData(const std::string &filename) {
+std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned char>> initializeFrameData(const std::string &filename) {
     // Variables to store number of exposures & sources
     int NEXP = get_number_of_rows_wrapper(filename, "/data/exposures");
     int NSRC = get_number_of_rows_wrapper(filename, "/data/sources");
 
     // Use NEXP and NSRC to initialize time and source vectors
-    std::vector<double> bjd(NEXP,0.0);  // BJD must be read in with double precision
-    std::vector<float> time(NEXP,0.0f); // Time values after subtracting mean BJD
+    std::vector<double> h_bjd(NEXP,0.0);  // BJD must be read in with double precision
     std::vector<unsigned long> sourceid(NSRC,0);  // Source IDs
-
     // Read HDF5 tables and load into vectors
     int status;
-    status = get_exposures_wrapper(filename, bjd.data(), 0, NEXP);
+    status = get_exposures_wrapper(filename, h_bjd.data(), 0, NEXP);
     check_status(status);
     status = get_sources_wrapper(filename, sourceid.data(), 0, NSRC);
     check_status(status);
 
-    // Subtract mean BJD and convert to float
-    double bjdref = std::min_element(bjd.begin(), bjd.end())[0];
-    for (int i = 0; i < NEXP; i++) {
-    time[i] = static_cast<float>(bjd[i] - bjdref);
-    time[i] *= 86400.0f; //convert to seconds
+    // Get indices of non-deep drilling time stamps
+    std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP);
+    int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
+
+    // Erase the deep drilling BJDs from bjd vector
+    for (int i = NEXP-1; i >= 0; i--) {
+        if (dd_index[i] == 0) {
+            h_bjd.erase(h_bjd.begin() + i);
+        }
     }
-    return std::make_tuple(NEXP, NSRC, time);
+    NEXP = non_dd; // Update number of exposures
+
+    // Subtract minimum BJD and convert to float
+    std::vector<float> time(NEXP,0.0f); // Time values after subtracting mean BJD
+    double bjdref = std::min_element(h_bjd.begin(), h_bjd.end())[0];
+    for (int i = 0; i < NEXP; i++) {
+    time[i] = static_cast<float>(h_bjd[i] - bjdref);
+    // time[i] *= 86400.0f; //convert to seconds
+    }
+    return std::make_tuple(NEXP, NSRC, time, dd_index);
 }

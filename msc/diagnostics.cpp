@@ -11,5 +11,5 @@ void logMessage(const std::string& logfile, const std::string& message) {
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
     log_file << std::ctime(&now_time) << message << std::endl;
-    std::cout << message << std::endl;
+    // std::cout << message << std::endl;
 }

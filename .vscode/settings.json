@@ -80,7 +80,8 @@
         "__nullptr": "cpp",
         "__locale": "cpp",
         "dense": "cpp",
-        "filesystem": "cpp"
+        "filesystem": "cpp",
+        "alignedvector3": "cpp"
     },
     "cmake.generator": "Ninja",
     "cmake.configureOnOpen": true

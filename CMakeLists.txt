@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.9)
 project(cudaFPW)
 
 # Set the C++ standard
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 # Enable CUDA support
 enable_language(CUDA)
@@ -31,6 +31,7 @@ add_executable(cudaFPW main.cu
                ../readwrite/hdf5_utils.cpp
                ../readwrite/filepaths.cpp
                ../msc/diagnostics.cpp
+               ../msc/semaphores.cpp
                runFile.cu)
 
 # Specify the CUDA standard

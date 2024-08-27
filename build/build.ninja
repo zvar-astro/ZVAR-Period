@@ -82,7 +82,7 @@ build CMakeFiles/cudaFPW.dir/main.cu.o: CUDA_COMPILER__cudaFPW_Release /data/swh
 
 build CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o: CXX_COMPILER__cudaFPW_Release /data/swhitebook/github/ZVAR/periodograms/frequencyGrid.cpp || cmake_object_order_depends_target_cudaFPW
   DEP_FILE = CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o.d
-  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17
+  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a
   INCLUDES = -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit
   OBJECT_DIR = CMakeFiles/cudaFPW.dir
   OBJECT_FILE_DIR = CMakeFiles/cudaFPW.dir/periodograms
@@ -96,7 +96,7 @@ build CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o: CUDA_COMPILER__cudaF
 
 build CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o: CXX_COMPILER__cudaFPW_Release /data/swhitebook/github/ZVAR/periodograms/FPW/cpu_functions.cpp || cmake_object_order_depends_target_cudaFPW
   DEP_FILE = CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o.d
-  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17
+  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a
   INCLUDES = -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit
   OBJECT_DIR = CMakeFiles/cudaFPW.dir
   OBJECT_FILE_DIR = CMakeFiles/cudaFPW.dir/periodograms/FPW
@@ -131,21 +131,28 @@ build CMakeFiles/cudaFPW.dir/statistics/peak_utils.cu.o: CUDA_COMPILER__cudaFPW_
 
 build CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o: CXX_COMPILER__cudaFPW_Release /data/swhitebook/github/ZVAR/readwrite/hdf5_utils.cpp || cmake_object_order_depends_target_cudaFPW
   DEP_FILE = CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o.d
-  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17
+  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a
   INCLUDES = -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit
   OBJECT_DIR = CMakeFiles/cudaFPW.dir
   OBJECT_FILE_DIR = CMakeFiles/cudaFPW.dir/readwrite
 
 build CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o: CXX_COMPILER__cudaFPW_Release /data/swhitebook/github/ZVAR/readwrite/filepaths.cpp || cmake_object_order_depends_target_cudaFPW
   DEP_FILE = CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o.d
-  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17
+  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a
   INCLUDES = -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit
   OBJECT_DIR = CMakeFiles/cudaFPW.dir
   OBJECT_FILE_DIR = CMakeFiles/cudaFPW.dir/readwrite
 
 build CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o: CXX_COMPILER__cudaFPW_Release /data/swhitebook/github/ZVAR/msc/diagnostics.cpp || cmake_object_order_depends_target_cudaFPW
   DEP_FILE = CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o.d
-  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17
+  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a
+  INCLUDES = -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit
+  OBJECT_DIR = CMakeFiles/cudaFPW.dir
+  OBJECT_FILE_DIR = CMakeFiles/cudaFPW.dir/msc
+
+build CMakeFiles/cudaFPW.dir/msc/semaphores.cpp.o: CXX_COMPILER__cudaFPW_Release /data/swhitebook/github/ZVAR/msc/semaphores.cpp || cmake_object_order_depends_target_cudaFPW
+  DEP_FILE = CMakeFiles/cudaFPW.dir/msc/semaphores.cpp.o.d
+  FLAGS = -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a
   INCLUDES = -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit
   OBJECT_DIR = CMakeFiles/cudaFPW.dir
   OBJECT_FILE_DIR = CMakeFiles/cudaFPW.dir/msc
@@ -165,7 +172,7 @@ build CMakeFiles/cudaFPW.dir/runFile.cu.o: CUDA_COMPILER__cudaFPW_Release /data/
 #############################################
 # Link the executable CMakeFiles/cudaFPW.dir/cmake_device_link.o
 
-build CMakeFiles/cudaFPW.dir/cmake_device_link.o: CXX_EXECUTABLE_DEVICE_LINKER__cudaFPW_Release CMakeFiles/cudaFPW.dir/main.cu.o CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o CMakeFiles/cudaFPW.dir/statistics/curve_statistics.cu.o CMakeFiles/cudaFPW.dir/statistics/peak_utils.cu.o CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o CMakeFiles/cudaFPW.dir/runFile.cu.o | /usr/local/cuda/lib64/libcudart_static.a /usr/lib/x86_64-linux-gnu/librt.so /usr/local/cuda/lib64/libcurand.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5_cpp.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so /usr/lib/x86_64-linux-gnu/libpthread.so /usr/lib/x86_64-linux-gnu/libsz.so /usr/lib/x86_64-linux-gnu/libz.so /usr/lib/x86_64-linux-gnu/libdl.so /usr/lib/x86_64-linux-gnu/libm.so /data/swhitebook/Packages/Gpufit/build/libGpufit.so /usr/lib/gcc/x86_64-linux-gnu/9/libgomp.so /usr/lib/x86_64-linux-gnu/libpthread.so
+build CMakeFiles/cudaFPW.dir/cmake_device_link.o: CXX_EXECUTABLE_DEVICE_LINKER__cudaFPW_Release CMakeFiles/cudaFPW.dir/main.cu.o CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o CMakeFiles/cudaFPW.dir/statistics/curve_statistics.cu.o CMakeFiles/cudaFPW.dir/statistics/peak_utils.cu.o CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o CMakeFiles/cudaFPW.dir/msc/semaphores.cpp.o CMakeFiles/cudaFPW.dir/runFile.cu.o | /usr/local/cuda/lib64/libcudart_static.a /usr/lib/x86_64-linux-gnu/librt.so /usr/local/cuda/lib64/libcurand.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5_cpp.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so /usr/lib/x86_64-linux-gnu/libpthread.so /usr/lib/x86_64-linux-gnu/libsz.so /usr/lib/x86_64-linux-gnu/libz.so /usr/lib/x86_64-linux-gnu/libdl.so /usr/lib/x86_64-linux-gnu/libm.so /data/swhitebook/Packages/Gpufit/build/libGpufit.so /usr/lib/gcc/x86_64-linux-gnu/9/libgomp.so /usr/lib/x86_64-linux-gnu/libpthread.so
   LANGUAGE_COMPILE_FLAGS = -O3 -O3 -DNDEBUG
   LINK_LIBRARIES = /usr/local/cuda/lib64/libcudart_static.a -ldl  -lm -lpthread -lcudadevrt -lcudart_static -lrt
   LINK_PATH = -L/usr/local/cuda-12.5/targets/x86_64-linux/lib/stubs  -L/usr/local/cuda-12.5/targets/x86_64-linux/lib
@@ -179,7 +186,7 @@ build CMakeFiles/cudaFPW.dir/cmake_device_link.o: CXX_EXECUTABLE_DEVICE_LINKER__
 #############################################
 # Link the executable cudaFPW
 
-build cudaFPW: CXX_EXECUTABLE_LINKER__cudaFPW_Release CMakeFiles/cudaFPW.dir/main.cu.o CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o CMakeFiles/cudaFPW.dir/statistics/curve_statistics.cu.o CMakeFiles/cudaFPW.dir/statistics/peak_utils.cu.o CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o CMakeFiles/cudaFPW.dir/runFile.cu.o CMakeFiles/cudaFPW.dir/cmake_device_link.o | /usr/local/cuda/lib64/libcudart_static.a /usr/lib/x86_64-linux-gnu/librt.so /usr/local/cuda/lib64/libcurand.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5_cpp.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so /usr/lib/x86_64-linux-gnu/libpthread.so /usr/lib/x86_64-linux-gnu/libsz.so /usr/lib/x86_64-linux-gnu/libz.so /usr/lib/x86_64-linux-gnu/libdl.so /usr/lib/x86_64-linux-gnu/libm.so /data/swhitebook/Packages/Gpufit/build/libGpufit.so /usr/lib/gcc/x86_64-linux-gnu/9/libgomp.so /usr/lib/x86_64-linux-gnu/libpthread.so
+build cudaFPW: CXX_EXECUTABLE_LINKER__cudaFPW_Release CMakeFiles/cudaFPW.dir/main.cu.o CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/kernels.cu.o CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o CMakeFiles/cudaFPW.dir/periodograms/FPW/wrappers.cu.o CMakeFiles/cudaFPW.dir/statistics/polyfit.cu.o CMakeFiles/cudaFPW.dir/statistics/curve_statistics.cu.o CMakeFiles/cudaFPW.dir/statistics/peak_utils.cu.o CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o CMakeFiles/cudaFPW.dir/msc/semaphores.cpp.o CMakeFiles/cudaFPW.dir/runFile.cu.o CMakeFiles/cudaFPW.dir/cmake_device_link.o | /usr/local/cuda/lib64/libcudart_static.a /usr/lib/x86_64-linux-gnu/librt.so /usr/local/cuda/lib64/libcurand.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5_cpp.so /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so /usr/lib/x86_64-linux-gnu/libpthread.so /usr/lib/x86_64-linux-gnu/libsz.so /usr/lib/x86_64-linux-gnu/libz.so /usr/lib/x86_64-linux-gnu/libdl.so /usr/lib/x86_64-linux-gnu/libm.so /data/swhitebook/Packages/Gpufit/build/libGpufit.so /usr/lib/gcc/x86_64-linux-gnu/9/libgomp.so /usr/lib/x86_64-linux-gnu/libpthread.so
   FLAGS = -O3 -O3 -DNDEBUG
   LINK_LIBRARIES = -Wl,-rpath,/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu/hdf5/serial:/data/swhitebook/Packages/Gpufit/build  /usr/local/cuda/lib64/libcudart_static.a  -ldl  /usr/lib/x86_64-linux-gnu/librt.so  /usr/local/cuda/lib64/libcurand.so  /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5_cpp.so  /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so  /usr/lib/x86_64-linux-gnu/libpthread.so  /usr/lib/x86_64-linux-gnu/libsz.so  /usr/lib/x86_64-linux-gnu/libz.so  /usr/lib/x86_64-linux-gnu/libdl.so  -lm  /data/swhitebook/Packages/Gpufit/build/libGpufit.so  -lpthread  /usr/lib/gcc/x86_64-linux-gnu/9/libgomp.so  /usr/lib/x86_64-linux-gnu/libpthread.so  -lcudadevrt  -lcudart_static  -lrt  -lpthread  -ldl
   LINK_PATH = -L/usr/local/cuda-12.5/targets/x86_64-linux/lib/stubs   -L/usr/local/cuda-12.5/targets/x86_64-linux/lib

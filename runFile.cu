@@ -1,5 +1,12 @@
 #include "runFile.cuh"
 
+void checkCudaError(cudaError_t err, const char* msg) {
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA error: " << msg << " - " << cudaGetErrorString(err) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
 /**
  * @brief Runs a single periodogram algorithm on a single matchfile and writes the results to a file
  * 
@@ -14,6 +21,8 @@
  */
 void runFile(int field, int ccd, int quad, std::string filter, std::string logpath) {
     omp_set_num_threads(9);
+    const char* SEMAPHORE_NAME = "/gpu_lock";
+    sem_t* semaphore = openSemaphore(SEMAPHORE_NAME);
 
     auto start_full = chrono::high_resolution_clock::now(); //Time full run
     auto start_preprocess = chrono::high_resolution_clock::now(); //Time loading and pre-processing
@@ -27,7 +36,8 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     // Initialize frame data
     unsigned int NEXP, NSRC;
     vector<float> time;
-    tie(NEXP, NSRC, time) = initializeFrameData(hdf_filename);
+    vector<unsigned char> dd_indices;
+    tie(NEXP, NSRC, time, dd_indices) = initializeFrameData(hdf_filename);
     vector<double> time_double(time.begin(), time.end());
 
     //FPW parameters
@@ -36,7 +46,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
 
     //Make frequency grid
     double fmin = 1.0 /(24 * 60 * 60); // 1 day
-    double fmax = 1.0 /(5 * 60); // 5 minutes
+    double fmax = 1440.0 /5; // 5 minutes
     vector<double> fgrid_double = freq_grid(time_double, fmin, fmax, 3);
     vector<float> fgrid(fgrid_double.begin(), fgrid_double.end()); //convert to floats
     int N_freqs = fgrid.size();
@@ -75,21 +85,20 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     logMessage(logpath, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
 
     logMessage(logpath, "Loading in flux values over " + to_string(NCHUNK) + " chunks with " + to_string(NEXP) + " exposures per source");
+
     for (unsigned long k = 0; k < NCHUNK; k++) {
-        
-        auto start_loadchunk = chrono::high_resolution_clock::now(); //Time loading chunk
+        auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
         // Get the range of objects to analyze
         objstart = k * NSRC_PER_CHUNK;
         if (k < NCHUNK-1) {
             objnum = NSRC_PER_CHUNK;
-        }
-        else {
+        } else {
             objnum = NSRC - (k * NSRC_PER_CHUNK);
         }
         logMessage(logpath, "Chunk " + to_string(k+1) + ": Starting at source " + to_string(objstart) + ", loading in " + to_string(objnum) + " sources");
 
         // Load the flux values
-        status = get_sourcedata_chunk(hdf_filename, flux.data(), fluxErr.data(), ratioValid.data(), objstart, objnum, NEXP, NEXP);
+        status = get_sourcedata_chunk(hdf_filename, flux.data(), fluxErr.data(), ratioValid.data(), dd_indices, objstart, objnum, NEXP);
         check_status(status);
 
         // Load the psids
@@ -99,17 +108,29 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
         logMessage(logpath, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
 
-        auto start_removebaseline = chrono::high_resolution_clock::now(); //Time removing baseline
+        auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
+
+        //Utilize a semaphore to prevent multiple threads from accessing the GPU at the same time
+        acquireSemaphore(semaphore);
+        std::cout << "Semaphore acquired for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
 
         // Remove baseline from flux values
         float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
 
+        cudaError_t cudaStatus = cudaDeviceSynchronize();
+        checkCudaError(cudaStatus, "cudaDeviceSynchronize after removeBaseline");
+
+        std::cout << "Semaphore releasing for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
+        releaseSemaphore(semaphore);
         auto stop_removebaseline = chrono::high_resolution_clock::now();
         auto duration_removebaseline = chrono::duration_cast<chrono::milliseconds>(stop_removebaseline - start_removebaseline);
         logMessage(logpath, "Time to remove baseline: " + to_string(duration_removebaseline.count()) + " milliseconds");
 
-        //Run FPW
-        auto start_periodogram = chrono::high_resolution_clock::now(); //Time running periodogram
+        // Run FPW
+        auto start_periodogram = chrono::high_resolution_clock::now(); // Time running periodogram
+        //Open the semaphore for the periodogram
+        acquireSemaphore(semaphore);
+        std::cout << "Semaphore acquired for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
 
         int N_freq_batch = 1000000;
         int N_curves_batch = 500;
@@ -120,16 +141,18 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         int N_data = static_cast<int>(NEXP);
         int N_curves = static_cast<int>(objnum);
 
-        //Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
+        // Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
         vector<float> periodograms = cudaRunFPW(t_host, flux_host, fluxErr_host, fgrid_host, N_data, N_curves, N_freqs, N_bins, N_freq_batch, N_curves_batch, N_samples);
 
+        std::cout << "Semaphore releasing for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
+        releaseSemaphore(semaphore);
         auto stop_periodogram = chrono::high_resolution_clock::now();
         auto duration_periodogram = chrono::duration_cast<chrono::milliseconds>(stop_periodogram - start_periodogram);
         logMessage(logpath, "Time to run periodogram: " + to_string(duration_periodogram.count()) + " milliseconds");
         logMessage(logpath, "Time per light curve: " + to_string(duration_periodogram.count() / objnum) + " milliseconds");
 
         // Find the most significant peaks
-        auto start_postprocess = chrono::high_resolution_clock::now(); //Time computing post-process
+        auto start_postprocess = chrono::high_resolution_clock::now(); // Time computing post-process
 
         const int distance = 300;
         const float threshold = 7.0f;
@@ -139,8 +162,14 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         vector<float> peakSignificances(N_curves * N_samples * N_peaks, 0.0f);
         vector<float> periodogramMeans(N_curves * N_samples, 0.0f);
         vector<float> periodogramStdevs(N_curves * N_samples, 0.0f);
+
         #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < N_curves * N_samples; i++) {
+            //print the quadrant and team once
+            if (i == 0) {
+                std::cout << "Quadrant: " << quad << " Team: " << omp_get_team_num() << std::endl;
+            }
+
             std::vector<float>::const_iterator first = periodograms.begin() + i * N_freqs;
             std::vector<float>::const_iterator last = periodograms.begin() + (i + 1) * N_freqs;
             std::vector<float> periodogramSlice(first, last);
@@ -161,8 +190,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
                 }
                 periodogramMeans[i] = mean;
                 periodogramStdevs[i] = stdev;
-            }
-            else { // If periodogram is empty, fill with -1 values
+            } else { // If periodogram is empty, fill with -1 values
                 for (int j = 0; j < N_peaks; j++) { 
                     peakFrequencies[i * N_peaks + j] = -1.0f;
                     peakSignificances[i * N_peaks + j] = -1.0f;
@@ -180,7 +208,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         }
         
         appendResults(results_filename, psids.data(), ra.data(), dec.data(), ratioValid.data(), peakFrequencies.data(), peakSignificances.data(), periodogramMeans.data(), periodogramStdevs.data(),
-                      N_curves, N_samples, N_peaks, objstart);
+                    N_curves, N_samples, N_peaks, objstart);
 
         // Free memory
         delete[] flux_no_baseline;
@@ -193,6 +221,8 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         auto stop_postprocess = chrono::high_resolution_clock::now();
         auto duration_postprocess = chrono::duration_cast<chrono::milliseconds>(stop_postprocess - start_postprocess);
         logMessage(logpath, "Time to compute post-processing: " + to_string(duration_postprocess.count()) + " milliseconds");
+
+
     }
 
     // Free vectors from memory
@@ -207,6 +237,8 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     std::vector<double>().swap(fgrid_double);
     std::vector<int>().swap(freq_flags);
     delete[] N_bins;
+
+    closeSemaphore(semaphore, SEMAPHORE_NAME);
 
     auto stop_full = chrono::high_resolution_clock::now();
     auto duration_full = chrono::duration_cast<chrono::seconds>(stop_full - start_full);

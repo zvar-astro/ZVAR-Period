@@ -6,7 +6,6 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
                     int N_dat, int N_curves, int N_freqs,
                     int* N_bins, int N_freqs_batch, int N_curves_batch, int N_samples) {
 
-    // omp_set_num_threads(9);
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
         N_bins_total += N_bins[i];
@@ -52,7 +51,6 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
     }
 
     // Run kernels for each batch of frequencies over all light curves
-    // #pragma omp parallel for schedule(dynamic)
     for (int i=0; i < N_freqs; i += N_freqs_batch) {
         // // Create a CUDA stream for this thread
         // cudaStream_t stream;

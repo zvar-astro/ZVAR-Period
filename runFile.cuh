@@ -9,6 +9,7 @@
 #include "statistics/polyfit.cuh"
 #include "statistics/peak_utils.h"
 #include "msc/diagnostics.h"
+#include "msc/semaphores.h"
 
 #include <iostream>
 #include <random>
