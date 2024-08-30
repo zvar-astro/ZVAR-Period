@@ -80,6 +80,8 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
             // Synchronize the stream to ensure all GPU tasks are complete
             // cudaStreamSynchronize(stream);
 
+            //Use OpenMP to copy the results to the periodograms array
+            #pragma omp parallel for schedule(dynamic)
             for (int k = 0; k < N_samples; k++) {
                 for (int l = 0; l < N_curves_current; l++) {
                     std::copy(

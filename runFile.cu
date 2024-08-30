@@ -19,9 +19,10 @@ void checkCudaError(cudaError_t err, const char* msg) {
  * @param logpath The path to the log file
  * 
  */
-void runFile(int field, int ccd, int quad, std::string filter, std::string logpath) {
-    omp_set_num_threads(9);
-    const char* SEMAPHORE_NAME = "/gpu_lock";
+void runFile(int field, int ccd, int quad, std::string filter, int device, std::string logpath) {
+    omp_set_num_threads(4);
+    std::string semaphore_name = "/device_" + std::to_string(device) + "_lock";
+    const char* SEMAPHORE_NAME = semaphore_name.c_str();
     sem_t* semaphore = openSemaphore(SEMAPHORE_NAME);
 
     auto start_full = chrono::high_resolution_clock::now(); //Time full run
@@ -30,7 +31,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     // Write the file path
     std::string hdf_filename = writeInputFilePath(field, ccd, quad, filter);
 
-    cout << "Running on file: " << hdf_filename.c_str() << endl;
+    // cout << "Running on file: " << hdf_filename.c_str() << endl;
     logMessage(logpath, "Running on file: " + hdf_filename);
 
     // Initialize frame data
@@ -45,8 +46,8 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
     int* N_bins = new int[N_samples]{20, 10, 5};
 
     //Make frequency grid
-    double fmin = 1.0 /(24 * 60 * 60); // 1 day
-    double fmax = 1440.0 /5; // 5 minutes
+    double fmin = 1.0; // 1 day
+    double fmax = 1440.0 / 5; // 5 minutes
     vector<double> fgrid_double = freq_grid(time_double, fmin, fmax, 3);
     vector<float> fgrid(fgrid_double.begin(), fgrid_double.end()); //convert to floats
     int N_freqs = fgrid.size();
@@ -112,7 +113,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
 
         //Utilize a semaphore to prevent multiple threads from accessing the GPU at the same time
         acquireSemaphore(semaphore);
-        std::cout << "Semaphore acquired for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
+        // std::cout << "Semaphore acquired for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
 
         // Remove baseline from flux values
         float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
@@ -120,7 +121,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         cudaError_t cudaStatus = cudaDeviceSynchronize();
         checkCudaError(cudaStatus, "cudaDeviceSynchronize after removeBaseline");
 
-        std::cout << "Semaphore releasing for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
+        // std::cout << "Semaphore releasing for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
         releaseSemaphore(semaphore);
         auto stop_removebaseline = chrono::high_resolution_clock::now();
         auto duration_removebaseline = chrono::duration_cast<chrono::milliseconds>(stop_removebaseline - start_removebaseline);
@@ -130,7 +131,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         auto start_periodogram = chrono::high_resolution_clock::now(); // Time running periodogram
         //Open the semaphore for the periodogram
         acquireSemaphore(semaphore);
-        std::cout << "Semaphore acquired for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
+        // std::cout << "Semaphore acquired for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
 
         int N_freq_batch = 1000000;
         int N_curves_batch = 500;
@@ -144,7 +145,7 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
         // Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
         vector<float> periodograms = cudaRunFPW(t_host, flux_host, fluxErr_host, fgrid_host, N_data, N_curves, N_freqs, N_bins, N_freq_batch, N_curves_batch, N_samples);
 
-        std::cout << "Semaphore releasing for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
+        // std::cout << "Semaphore releasing for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
         releaseSemaphore(semaphore);
         auto stop_periodogram = chrono::high_resolution_clock::now();
         auto duration_periodogram = chrono::duration_cast<chrono::milliseconds>(stop_periodogram - start_periodogram);
@@ -165,11 +166,6 @@ void runFile(int field, int ccd, int quad, std::string filter, std::string logpa
 
         #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < N_curves * N_samples; i++) {
-            //print the quadrant and team once
-            if (i == 0) {
-                std::cout << "Quadrant: " << quad << " Team: " << omp_get_team_num() << std::endl;
-            }
-
             std::vector<float>::const_iterator first = periodograms.begin() + i * N_freqs;
             std::vector<float>::const_iterator last = periodograms.begin() + (i + 1) * N_freqs;
             std::vector<float> periodogramSlice(first, last);

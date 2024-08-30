@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Run the file with the provided arguments
-    runFile(field, ccd, quad, filter, logpath);
+    runFile(field, ccd, quad, filter, device, logpath);
 
     return 0;
 }
