@@ -9,6 +9,7 @@
 #include "statistics/polyfit.cuh"
 #include "statistics/peak_utils.h"
 #include "msc/diagnostics.h"
+#include "msc/semaphores.h"
 
 #include <iostream>
 #include <random>
@@ -21,6 +22,6 @@
 
 using namespace std;
 
-void runFile(int field, int ccd, int quad, std::string filter, std::string logpath);
+void runFile(int field, int ccd, int quad, std::string filter, int device, std::string logpath);
 
 #endif //RUN_FILE_H

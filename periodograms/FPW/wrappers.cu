@@ -52,6 +52,10 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
     // Run kernels for each batch of frequencies over all light curves
     for (int i=0; i < N_freqs; i += N_freqs_batch) {
+        // // Create a CUDA stream for this thread
+        // cudaStream_t stream;
+        // cudaStreamCreate(&stream);
+
         int N_freqs_current = min(N_freqs_batch, N_freqs - i);
 
         cudaMemcpyAsync(freqs, freqs_host + i, N_freqs_current * sizeof(float), cudaMemcpyHostToDevice);
@@ -73,6 +77,11 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
             cudaMemcpyAsync(deltaChi_host, deltaChiArr, N_freqs_current * N_curves_current * N_samples * sizeof(float), cudaMemcpyDeviceToHost);
 
+            // Synchronize the stream to ensure all GPU tasks are complete
+            // cudaStreamSynchronize(stream);
+
+            //Use OpenMP to copy the results to the periodograms array
+            #pragma omp parallel for schedule(dynamic)
             for (int k = 0; k < N_samples; k++) {
                 for (int l = 0; l < N_curves_current; l++) {
                     std::copy(
@@ -83,6 +92,8 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
                 }
             }
         }
+        // Destroy the stream
+        // cudaStreamDestroy(stream);
     }
 
     // Free device memory

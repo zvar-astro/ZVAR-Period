@@ -6,7 +6,7 @@
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
-  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17 -o CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o -c /data/swhitebook/github/ZVAR/periodograms/frequencyGrid.cpp",
+  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a -o CMakeFiles/cudaFPW.dir/periodograms/frequencyGrid.cpp.o -c /data/swhitebook/github/ZVAR/periodograms/frequencyGrid.cpp",
   "file": "/data/swhitebook/github/ZVAR/periodograms/frequencyGrid.cpp"
 },
 {
@@ -16,7 +16,7 @@
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
-  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17 -o CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o -c /data/swhitebook/github/ZVAR/periodograms/FPW/cpu_functions.cpp",
+  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a -o CMakeFiles/cudaFPW.dir/periodograms/FPW/cpu_functions.cpp.o -c /data/swhitebook/github/ZVAR/periodograms/FPW/cpu_functions.cpp",
   "file": "/data/swhitebook/github/ZVAR/periodograms/FPW/cpu_functions.cpp"
 },
 {
@@ -41,18 +41,23 @@
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
-  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17 -o CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o -c /data/swhitebook/github/ZVAR/readwrite/hdf5_utils.cpp",
+  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a -o CMakeFiles/cudaFPW.dir/readwrite/hdf5_utils.cpp.o -c /data/swhitebook/github/ZVAR/readwrite/hdf5_utils.cpp",
   "file": "/data/swhitebook/github/ZVAR/readwrite/hdf5_utils.cpp"
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
-  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17 -o CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o -c /data/swhitebook/github/ZVAR/readwrite/filepaths.cpp",
+  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a -o CMakeFiles/cudaFPW.dir/readwrite/filepaths.cpp.o -c /data/swhitebook/github/ZVAR/readwrite/filepaths.cpp",
   "file": "/data/swhitebook/github/ZVAR/readwrite/filepaths.cpp"
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
-  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++17 -o CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o -c /data/swhitebook/github/ZVAR/msc/diagnostics.cpp",
+  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a -o CMakeFiles/cudaFPW.dir/msc/diagnostics.cpp.o -c /data/swhitebook/github/ZVAR/msc/diagnostics.cpp",
   "file": "/data/swhitebook/github/ZVAR/msc/diagnostics.cpp"
+},
+{
+  "directory": "/data/swhitebook/github/ZVAR/build",
+  "command": "/usr/bin/g++ -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -fopenmp -std=gnu++2a -o CMakeFiles/cudaFPW.dir/msc/semaphores.cpp.o -c /data/swhitebook/github/ZVAR/msc/semaphores.cpp",
+  "file": "/data/swhitebook/github/ZVAR/msc/semaphores.cpp"
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",

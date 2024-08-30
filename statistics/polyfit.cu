@@ -60,6 +60,8 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
     // Check status
     if (status != ReturnState::OK) {
         std::cout << "Error: Gpufit failed with status " << status << std::endl;
+        const char* error_message = gpufit_get_last_error();
+        std::cerr << "GPUfit error: " << error_message << std::endl;
     }
 
     // subtract the model y from the data y

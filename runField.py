@@ -4,12 +4,43 @@ import threading
 import queue
 import sys
 import time
+import os
+import signal
+from multiprocessing import Semaphore
 
-def run_cudaFPW(field, ccd, quad, band, device, stop_event):
+def create_semaphores():
+    semaphores = [Semaphore(1) for _ in range(4)]
+    semaphore_names = [f"/device_{i}_lock" for i in range(4)]
+    return semaphores, semaphore_names
+
+def cleanup_semaphores(semaphore_names):
+    # Remove specified semaphore names
+    for name in semaphore_names:
+        try:
+            os.unlink(name)
+        except FileNotFoundError:
+            pass
+
+    # Remove all semaphores from /dev/shm directory
+    shm_dir = '/dev/shm'
+    for filename in os.listdir(shm_dir):
+        filepath = os.path.join(shm_dir, filename)
+        if filename.startswith('sem.'):
+            try:
+                os.unlink(filepath)
+            except FileNotFoundError:
+                pass
+
+def signal_handler(sig, frame, semaphore_names):
+    cleanup_semaphores(semaphore_names)
+    sys.exit(0)
+
+def run_cudaFPW(field, ccd, quad, band, device, subdivision, stop_event):
     command = [
         'taskset',
         '-c',
-        str(9 * device) + '-' + str(9 * device + 8),
+        # str(9 * device) + '-' + str(9 * device + 8),
+        str(8 * device + 4 * subdivision) + '-' + str(8 * device + 4 * subdivision + 3),
         './build/cudaFPW',
         str(field),
         str(ccd),
@@ -62,7 +93,7 @@ def run_schuster(field, ccd, quad, band, device, stop_event):
         print(f"An error occurred: {e}")
         stop_event.set()
 
-def worker(task_queue, device, algorithm, stop_event):
+def worker(task_queue, device, subdivision, algorithm, stop_event):
     while not task_queue.empty() and not stop_event.is_set():
         try:
             field, ccd, quad, band = task_queue.get_nowait()
@@ -70,7 +101,7 @@ def worker(task_queue, device, algorithm, stop_event):
             break
 
         if algorithm == 'fpw':
-            run_cudaFPW(field, ccd, quad, band, device, stop_event)
+            run_cudaFPW(field, ccd, quad, band, device, subdivision, stop_event)
         elif algorithm == 'schuster':
             run_schuster(field, ccd, quad, band, device, stop_event)
         task_queue.task_done()
@@ -87,6 +118,8 @@ if __name__ == "__main__":
         print("ERROR: algorithm must be one of 'schuster' or 'fpw'")
         print("Usage: python runField.py <field> <algorithm>")
         sys.exit(1)
+
+    semaphores, semaphore_names = create_semaphores()
     
     task_queue = queue.Queue()
     
@@ -95,12 +128,14 @@ if __name__ == "__main__":
             for quad in range(1, 5):
                 task_queue.put((field, ccd, quad, band))
     
-    num_threads = 4
+    num_threads = 8
     threads = []
     stop_event = threading.Event()
 
     for i in range(num_threads):
-        thread = threading.Thread(target=worker, args=(task_queue, i, algorithm, stop_event))
+        device = int(i/2) #There are four GPUs 0-3
+        subdivision = i % 2 #Each GPU should process two files at a time
+        thread = threading.Thread(target=worker, args=(task_queue, device, subdivision, algorithm, stop_event))
         thread.start()
         threads.append(thread)
     
@@ -113,5 +148,10 @@ if __name__ == "__main__":
         thread.join()
 
     if stop_event.is_set():
+        cleanup_semaphores(semaphore_names)
         print("An error occurred in one of the threads. Exiting with error code.")
         sys.exit(1)
+    else:
+        cleanup_semaphores(semaphore_names)
+        print("All files completed successfully.")
+        sys.exit(0)
