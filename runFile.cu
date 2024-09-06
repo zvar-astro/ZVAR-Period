@@ -46,24 +46,25 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     int* N_bins = new int[N_samples]{20, 10, 5};
 
     //Make frequency grid
-    double fmin = 1.0; // 1 day
+    // double fmin = 1.0; // 1 day
+    double fmin = -1.0; // 1 day
     double fmax = 1440.0 / 5; // 5 minutes
     vector<double> fgrid_double = freq_grid(time_double, fmin, fmax, 3);
     vector<float> fgrid(fgrid_double.begin(), fgrid_double.end()); //convert to floats
     int N_freqs = fgrid.size();
 
-    // Erase terrestrial frequencies from vector
-    auto start_erase_freq = chrono::high_resolution_clock::now();
-    std::vector<int> freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs); // Get indices to exclude terrestrial frequencies
+    // // Erase terrestrial frequencies from vector
+    // auto start_erase_freq = chrono::high_resolution_clock::now();
+    // std::vector<int> freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs); // Get indices to exclude terrestrial frequencies
 
-    // Remove terrestrial frequencies
-    auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
-        static int index = 0;
-        return freq_flags[index++] == 0;
-    });
-    fgrid.erase(badElements, fgrid.end());
+    // // Remove terrestrial frequencies
+    // auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
+    //     static int index = 0;
+    //     return freq_flags[index++] == 0;
+    // });
+    // fgrid.erase(badElements, fgrid.end());
 
-    N_freqs = fgrid.size(); // Update the NFREQ value
+    // N_freqs = fgrid.size(); // Update the NFREQ value
     logMessage(logpath, "Frequency grid size: " + std::to_string(N_freqs));
 
     // Load in flux values while iterating over chunks of sources
@@ -231,7 +232,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     std::vector<float>().swap(dec);
     std::vector<double>().swap(time_double);
     std::vector<double>().swap(fgrid_double);
-    std::vector<int>().swap(freq_flags);
+    // std::vector<int>().swap(freq_flags);
     delete[] N_bins;
 
     closeSemaphore(semaphore, SEMAPHORE_NAME);

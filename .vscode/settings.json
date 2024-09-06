@@ -83,6 +83,7 @@
         "filesystem": "cpp",
         "alignedvector3": "cpp"
     },
+    // "cmake.generator": "Unix Makefiles",
     "cmake.generator": "Ninja",
     "cmake.configureOnOpen": true
 }

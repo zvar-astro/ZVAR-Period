@@ -1,11 +1,11 @@
 Performing C SOURCE FILE Test CMAKE_HAVE_LIBC_PTHREAD failed with the following output:
 Change Dir: /data/swhitebook/github/ZVAR/build/CMakeFiles/CMakeTmp
 
-Run Build Command(s):/data/swhitebook/ninja/ninja cmTC_c3e5b && [1/2] Building C object CMakeFiles/cmTC_c3e5b.dir/src.c.o
-[2/2] Linking C executable cmTC_c3e5b
-FAILED: cmTC_c3e5b 
-: && /usr/bin/cc -fPIC  CMakeFiles/cmTC_c3e5b.dir/src.c.o -o cmTC_c3e5b   && :
-/usr/bin/ld: CMakeFiles/cmTC_c3e5b.dir/src.c.o: in function `main':
+Run Build Command(s):/data/swhitebook/ninja/ninja cmTC_b7d11 && [1/2] Building C object CMakeFiles/cmTC_b7d11.dir/src.c.o
+[2/2] Linking C executable cmTC_b7d11
+FAILED: cmTC_b7d11 
+: && /usr/bin/cc -fPIC  CMakeFiles/cmTC_b7d11.dir/src.c.o -o cmTC_b7d11   && :
+/usr/bin/ld: CMakeFiles/cmTC_b7d11.dir/src.c.o: in function `main':
 src.c:(.text+0x46): undefined reference to `pthread_create'
 /usr/bin/ld: src.c:(.text+0x52): undefined reference to `pthread_detach'
 /usr/bin/ld: src.c:(.text+0x5e): undefined reference to `pthread_cancel'
@@ -38,10 +38,10 @@ int main(void)
 Determining if the function pthread_create exists in the pthreads failed with the following output:
 Change Dir: /data/swhitebook/github/ZVAR/build/CMakeFiles/CMakeTmp
 
-Run Build Command(s):/data/swhitebook/ninja/ninja cmTC_13907 && [1/2] Building C object CMakeFiles/cmTC_13907.dir/CheckFunctionExists.c.o
-[2/2] Linking C executable cmTC_13907
-FAILED: cmTC_13907 
-: && /usr/bin/cc -fPIC -DCHECK_FUNCTION_EXISTS=pthread_create  CMakeFiles/cmTC_13907.dir/CheckFunctionExists.c.o -o cmTC_13907  -lpthreads && :
+Run Build Command(s):/data/swhitebook/ninja/ninja cmTC_ecd54 && [1/2] Building C object CMakeFiles/cmTC_ecd54.dir/CheckFunctionExists.c.o
+[2/2] Linking C executable cmTC_ecd54
+FAILED: cmTC_ecd54 
+: && /usr/bin/cc -fPIC -DCHECK_FUNCTION_EXISTS=pthread_create  CMakeFiles/cmTC_ecd54.dir/CheckFunctionExists.c.o -o cmTC_ecd54  -lpthreads && :
 /usr/bin/ld: cannot find -lpthreads
 collect2: error: ld returned 1 exit status
 ninja: build stopped: subcommand failed.
