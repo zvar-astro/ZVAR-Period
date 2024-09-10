@@ -61,6 +61,11 @@
 },
 {
   "directory": "/data/swhitebook/github/ZVAR/build",
+  "command": "/usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -Xcompiler=-fopenmp -std=c++17 -x cu -dc /data/swhitebook/github/ZVAR/msc/memory_managers.cu -o CMakeFiles/cudaFPW.dir/msc/memory_managers.cu.o",
+  "file": "/data/swhitebook/github/ZVAR/msc/memory_managers.cu"
+},
+{
+  "directory": "/data/swhitebook/github/ZVAR/build",
   "command": "/usr/local/cuda-12.5/bin/nvcc -forward-unknown-to-host-compiler -I/usr/include/hdf5/serial -I/data/swhitebook/Packages/eigen -I/data/swhitebook/Packages/Gpufit/Gpufit  -O3 -O3 -DNDEBUG -Xcompiler=-fopenmp -std=c++17 -x cu -dc /data/swhitebook/github/ZVAR/runFile.cu -o CMakeFiles/cudaFPW.dir/runFile.cu.o",
   "file": "/data/swhitebook/github/ZVAR/runFile.cu"
 }

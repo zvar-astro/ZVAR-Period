@@ -10,6 +10,7 @@
 #include "statistics/peak_utils.h"
 #include "msc/diagnostics.h"
 #include "msc/semaphores.h"
+#include "msc/memory_managers.cuh"
 
 #include <iostream>
 #include <random>

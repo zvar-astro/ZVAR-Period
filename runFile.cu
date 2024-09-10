@@ -20,57 +20,76 @@ void checkCudaError(cudaError_t err, const char* msg) {
  * 
  */
 void runFile(int field, int ccd, int quad, std::string filter, int device, std::string logpath) {
-    omp_set_num_threads(4);
+
+    omp_set_num_threads(4); // Set the number of threads for OpenMP
+
+    //Obtain the semaphore for the device
     std::string semaphore_name = "/device_" + std::to_string(device) + "_lock";
     const char* SEMAPHORE_NAME = semaphore_name.c_str();
-    sem_t* semaphore = openSemaphore(SEMAPHORE_NAME);
+    sem_t* semaphore = openSemaphore(SEMAPHORE_NAME); // Open the semaphore
 
     auto start_full = chrono::high_resolution_clock::now(); //Time full run
     auto start_preprocess = chrono::high_resolution_clock::now(); //Time loading and pre-processing
 
-    // Write the file path
+    // Write the file path for the light curves
     std::string hdf_filename = writeInputFilePath(field, ccd, quad, filter);
 
-    // cout << "Running on file: " << hdf_filename.c_str() << endl;
     logMessage(logpath, "Running on file: " + hdf_filename);
-
-    // Initialize frame data
-    unsigned int NEXP, NSRC;
-    vector<float> time;
-    vector<unsigned char> dd_indices;
-    tie(NEXP, NSRC, time, dd_indices) = initializeFrameData(hdf_filename);
-    vector<double> time_double(time.begin(), time.end());
 
     //FPW parameters
     int N_samples = 3;
     int* N_bins = new int[N_samples]{20, 10, 5};
 
+    // Initialize frame data
+    unsigned int NEXP, NSRC; //Number of exposures and sources
+    vector<float> time; //Time values in days
+    vector<unsigned char> dd_indices; //Indices of deep drilling data
+    tie(NEXP, NSRC, time, dd_indices) = initializeFrameData(hdf_filename);
+    vector<double> time_double(time.begin(), time.end());
+
     //Make frequency grid
     // double fmin = 1.0; // 1 day
-    double fmin = -1.0; // 1 day
-    double fmax = 1440.0 / 5; // 5 minutes
-    vector<double> fgrid_double = freq_grid(time_double, fmin, fmax, 3);
+    double fmin = -1.0; // No max period
+    double fmax = 1440.0 / 5; // 5 minute minimum period
+    vector<double> fgrid_double = freq_grid(time_double, fmin, fmax, 3); //frequency grid in 1/days
     vector<float> fgrid(fgrid_double.begin(), fgrid_double.end()); //convert to floats
-    int N_freqs = fgrid.size();
+    unsigned long N_freqs = fgrid.size();
 
-    // // Erase terrestrial frequencies from vector
-    // auto start_erase_freq = chrono::high_resolution_clock::now();
-    // std::vector<int> freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs); // Get indices to exclude terrestrial frequencies
+    // Erase terrestrial frequencies from vector
+    auto start_erase_freq = chrono::high_resolution_clock::now();
+    std::vector<int> freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs); // Get indices to exclude terrestrial frequencies
 
-    // // Remove terrestrial frequencies
-    // auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
-    //     static int index = 0;
-    //     return freq_flags[index++] == 0;
-    // });
-    // fgrid.erase(badElements, fgrid.end());
+    // Remove terrestrial frequencies
+    auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
+        static int index = 0;
+        return freq_flags[index++] == 0;
+    });
+    fgrid.erase(badElements, fgrid.end());
 
-    // N_freqs = fgrid.size(); // Update the NFREQ value
+    N_freqs = fgrid.size(); // Update the NFREQ value
     logMessage(logpath, "Frequency grid size: " + std::to_string(N_freqs));
 
+    //Handle memory for the instance
+    size_t hostMemory = getHostMemory(); //Obtain the total host memory
+    size_t allowedTotalMemory = hostMemory * 0.95; // Cap TOTAL usage at 95% of total memory
+    size_t allowedInstanceMemory = allowedTotalMemory / 8; // Divide allowed memory by number of instances
+
+    //Decide how many chunks to run based on memory
+    size_t singleObjectPeriodogramMemory = N_freqs * N_samples * sizeof(float); // Memory for a single periodogram
+    size_t singleObjectDataMemory = NEXP * 2 * sizeof(float); // Memory for a single object's data (flux and fluxErr)
+    size_t singleObjectMetaDataMemory = sizeof(float) + sizeof(unsigned long) + 2 * sizeof(float); // Memory for a single object's metadata (ratioValid, psid, ra, dec)
+    size_t singleObjectMemory = singleObjectPeriodogramMemory + singleObjectDataMemory + singleObjectMetaDataMemory; // Memory for a single object
+    size_t allowedChunkMemory = allowedInstanceMemory * 0.95; // Cap CHUNK usage at 95% of instance memory to allow for overhead
+    size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
+    // unsigned long NCHUNK = 1 + (NSRC / allowedSourcesMemory); // Number of chunks to run
+    unsigned long NCHUNK = 25;
+    
+    std::cout << "Allowed sources per chunk: " << allowedSourcesMemory << std::endl;
+
+    std::cout << "Number of chunks: " << NCHUNK << std::endl;
     // Load in flux values while iterating over chunks of sources
     // Define Chunk parameters
     int status;
-    unsigned long NCHUNK = 50;
     unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
     unsigned long objstart, objnum;
 
@@ -134,14 +153,14 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         acquireSemaphore(semaphore);
         // std::cout << "Semaphore acquired for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
 
-        int N_freq_batch = 1000000;
-        int N_curves_batch = 500;
+        unsigned long N_freq_batch = 1000000;
+        unsigned long N_curves_batch = 500;
         float* t_host = time.data();
         float* flux_host = flux_no_baseline;
         float* fluxErr_host = fluxErr.data();
         float* fgrid_host = fgrid.data();
         int N_data = static_cast<int>(NEXP);
-        int N_curves = static_cast<int>(objnum);
+        unsigned long N_curves = objnum;
 
         // Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
         vector<float> periodograms = cudaRunFPW(t_host, flux_host, fluxErr_host, fgrid_host, N_data, N_curves, N_freqs, N_bins, N_freq_batch, N_curves_batch, N_samples);
@@ -166,7 +185,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         vector<float> periodogramStdevs(N_curves * N_samples, 0.0f);
 
         #pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < N_curves * N_samples; i++) {
+        for (unsigned long i = 0; i < N_curves * N_samples; i++) {
             std::vector<float>::const_iterator first = periodograms.begin() + i * N_freqs;
             std::vector<float>::const_iterator last = periodograms.begin() + (i + 1) * N_freqs;
             std::vector<float> periodogramSlice(first, last);

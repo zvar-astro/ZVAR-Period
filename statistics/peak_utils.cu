@@ -57,13 +57,16 @@ std::tuple<float, float> pg_stats(std::vector<float> v) {
     v = vector of values
     */
 
-    const float m = mean(v);
+   std::vector<float> vFiltered;
+   std::copy_if(v.begin(), v.end(), std::back_inserter(vFiltered), [](float x){ return !std::isnan(x); });
+
+    const float m = mean(vFiltered);
     float accum = 0.0f;
-    std::for_each (std::begin(v), std::end(v), [&](const float d) {
+    std::for_each (std::begin(vFiltered), std::end(vFiltered), [&](const float d) {
         accum += (d - m) * (d - m);
     });
 
-    float stdev = sqrt(accum / (v.size()-1));
+    float stdev = sqrt(accum / (vFiltered.size()-1));
     return {m, stdev};
 }
 

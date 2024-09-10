@@ -8,7 +8,7 @@
 #include <omp.h>
 
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
-                    int N_dat, int N_curves, int N_freqs,
-                    int* N_bins, int N_freqs_batch, int N_curves_batch, int N_samples);
+                    int N_dat, unsigned long N_curves, unsigned long N_freqs,
+                    int* N_bins, unsigned long N_freqs_batch, unsigned long N_curves_batch, int N_samples);
 
 #endif // WRAPPERS_CUH

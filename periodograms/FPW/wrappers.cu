@@ -3,8 +3,8 @@
 /*Multibin FPW. Instead of passing a single integer value of N_bins we pass an array of N_bins values starting with the largest value.
 The following values must be factors of N_bins[0]. N_samples is then the length of N_bins and determines how much memory must be allocated.*/
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
-                    int N_dat, int N_curves, int N_freqs,
-                    int* N_bins, int N_freqs_batch, int N_curves_batch, int N_samples) {
+                    int N_dat, unsigned long N_curves, unsigned long N_freqs,
+                    int* N_bins, unsigned long N_freqs_batch, unsigned long N_curves_batch, int N_samples) {
 
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
@@ -42,21 +42,18 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
     float* deltaChi_host = new float[N_curves_batch * N_freqs_batch * N_samples];
 
     // Create a matrix to store the periodograms for each light curve
+    std::cout << "The size of the periodograms array is: " << N_curves * N_freqs * N_samples << std::endl;
     std::vector<float> periodograms(N_curves * N_freqs * N_samples);
 
-    //copy y and ivar to device
+    // Copy y and ivar to device
     float* ivar_host = new float[N_dat * N_curves];
-    for (int i = 0; i < N_curves * N_dat; i++) {
+    for (unsigned long i = 0; i < N_curves * N_dat; i++) {
         ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
     }
 
     // Run kernels for each batch of frequencies over all light curves
-    for (int i=0; i < N_freqs; i += N_freqs_batch) {
-        // // Create a CUDA stream for this thread
-        // cudaStream_t stream;
-        // cudaStreamCreate(&stream);
-
-        int N_freqs_current = min(N_freqs_batch, N_freqs - i);
+    for (unsigned long i = 0; i < N_freqs; i += N_freqs_batch) {
+        unsigned long N_freqs_current = std::min(N_freqs_batch, N_freqs - i);
 
         cudaMemcpyAsync(freqs, freqs_host + i, N_freqs_current * sizeof(float), cudaMemcpyHostToDevice);
 
@@ -64,8 +61,8 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
         cudaMakeIndices<<<gridSizeInd_current, blockSizeInd>>>(t, freqs, indices, N_bins[0], N_dat, N_freqs_current);
 
-        for (int j = 0; j < N_curves; j += N_curves_batch) {
-            int N_curves_current = min(N_curves_batch, N_curves - j);
+        for (unsigned long j = 0; j < N_curves; j += N_curves_batch) {
+            unsigned long N_curves_current = std::min(N_curves_batch, N_curves - j);
 
             cudaMemsetAsync(deltaChiArr, 0, N_freqs_current * N_curves_current * N_samples * sizeof(float));
 
@@ -77,13 +74,10 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
             cudaMemcpyAsync(deltaChi_host, deltaChiArr, N_freqs_current * N_curves_current * N_samples * sizeof(float), cudaMemcpyDeviceToHost);
 
-            // Synchronize the stream to ensure all GPU tasks are complete
-            // cudaStreamSynchronize(stream);
-
-            //Use OpenMP to copy the results to the periodograms array
+            // Use OpenMP to copy the results to the periodograms array
             #pragma omp parallel for schedule(dynamic)
             for (int k = 0; k < N_samples; k++) {
-                for (int l = 0; l < N_curves_current; l++) {
+                for (unsigned long l = 0; l < N_curves_current; l++) {
                     std::copy(
                         deltaChi_host + k * N_curves_current * N_freqs_current + l * N_freqs_current,  // Source
                         deltaChi_host + k * N_curves_current * N_freqs_current + (l + 1) * N_freqs_current,  // Source end
@@ -92,8 +86,6 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
                 }
             }
         }
-        // Destroy the stream
-        // cudaStreamDestroy(stream);
     }
 
     // Free device memory
