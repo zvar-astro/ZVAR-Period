@@ -42,14 +42,19 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
     float* deltaChi_host = new float[N_curves_batch * N_freqs_batch * N_samples];
 
     // Create a matrix to store the periodograms for each light curve
-    std::cout << "The size of the periodograms array is: " << N_curves * N_freqs * N_samples << std::endl;
+    // std::cout << "The size of the periodograms array is: " << N_curves * N_freqs * N_samples << std::endl;
     std::vector<float> periodograms(N_curves * N_freqs * N_samples);
 
     // Copy y and ivar to device
     float* ivar_host = new float[N_dat * N_curves];
+    // for (unsigned long i = 0; i < N_curves * N_dat; i++) {
+    //     ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
+    // }
+    
     for (unsigned long i = 0; i < N_curves * N_dat; i++) {
-        ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
+        ivar_host[i] = 1.0;
     }
+
 
     // Run kernels for each batch of frequencies over all light curves
     for (unsigned long i = 0; i < N_freqs; i += N_freqs_batch) {

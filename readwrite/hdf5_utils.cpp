@@ -394,8 +394,9 @@ int get_sourcedata_chunk(std::string filename,
     for (int j = 0; j < N; j++) {
       if (keep[j] == 1) {
         if (std::isnan(data[i*N+j].flux)) {
-          flux[i*numentry+k] = data[i*N+j].flux;
-          fluxErr[i*numentry+k] = INFINITY;
+        //   flux[i*numentry+k] = data[i*N+j].flux;
+            flux[i*numentry+k] = 0.0f;
+            fluxErr[i*numentry+k] = INFINITY;
         }
         else {
           flux[i*numentry+k] = data[i*N+j].flux;

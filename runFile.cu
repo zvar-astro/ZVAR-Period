@@ -49,6 +49,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
     //Make frequency grid
     // double fmin = 1.0; // 1 day
+    // double fmin = 1.0/30.0; // 30 day minimum period
     double fmin = -1.0; // No max period
     double fmax = 1440.0 / 5; // 5 minute minimum period
     vector<double> fgrid_double = freq_grid(time_double, fmin, fmax, 3); //frequency grid in 1/days
@@ -82,11 +83,11 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     size_t allowedChunkMemory = allowedInstanceMemory * 0.95; // Cap CHUNK usage at 95% of instance memory to allow for overhead
     size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
     // unsigned long NCHUNK = 1 + (NSRC / allowedSourcesMemory); // Number of chunks to run
-    unsigned long NCHUNK = 25;
+    unsigned long NCHUNK = 50;
     
-    std::cout << "Allowed sources per chunk: " << allowedSourcesMemory << std::endl;
+    // std::cout << "Allowed sources per chunk: " << allowedSourcesMemory << std::endl;
 
-    std::cout << "Number of chunks: " << NCHUNK << std::endl;
+    // std::cout << "Number of chunks: " << NCHUNK << std::endl;
     // Load in flux values while iterating over chunks of sources
     // Define Chunk parameters
     int status;
@@ -108,6 +109,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     logMessage(logpath, "Loading in flux values over " + to_string(NCHUNK) + " chunks with " + to_string(NEXP) + " exposures per source");
 
     for (unsigned long k = 0; k < NCHUNK; k++) {
+    // for (unsigned long k = 32; k < 37; k++) {
         auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
         // Get the range of objects to analyze
         objstart = k * NSRC_PER_CHUNK;
@@ -127,7 +129,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
-        logMessage(logpath, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
+        // logMessage(logpath, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
 
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
@@ -220,6 +222,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         string results_filename = writeOutputFilePath(field, ccd, quad, filter);
         
         if (k == 0) {
+        // if (k == 32) {
             writeResults(results_filename, N_curves, NSRC, N_samples, N_peaks);
         }
         
@@ -251,7 +254,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     std::vector<float>().swap(dec);
     std::vector<double>().swap(time_double);
     std::vector<double>().swap(fgrid_double);
-    // std::vector<int>().swap(freq_flags);
+    std::vector<int>().swap(freq_flags);
     delete[] N_bins;
 
     closeSemaphore(semaphore, SEMAPHORE_NAME);
