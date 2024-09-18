@@ -127,6 +127,25 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         // Load the psids
         status = get_sources_chunk(hdf_filename, psids.data(), ra.data(), dec.data(), objstart, objnum);
 
+        //Check for any nans in the flux values
+        for (unsigned long i = 0; i < objnum; i++) {
+            for (unsigned long j = 0; j < NEXP; j++) {
+                if (std::isnan(flux[i * NEXP + j])) {
+                    flux[i * NEXP + j] = 0.0f;
+                    fluxErr[i * NEXP + j] = INFINITY;
+                }
+            }
+        }
+
+        // // find medians and mads
+        // float* medians = new float[objnum];
+        // float* mads = new float[objnum];
+
+        // for (unsigned long i = 0; i < objnum; i++) {
+        //     medians[i] = median(flux.data() + i * NEXP, NEXP);
+        //     mads[i] = mad(flux.data() + i * NEXP, NEXP, medians[i]);
+        // }
+
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
         // logMessage(logpath, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
@@ -139,6 +158,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
         // Remove baseline from flux values
         float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
+        // float* flux_no_baseline = flux.data();
 
         cudaError_t cudaStatus = cudaDeviceSynchronize();
         checkCudaError(cudaStatus, "cudaDeviceSynchronize after removeBaseline");
@@ -163,6 +183,16 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         float* fgrid_host = fgrid.data();
         int N_data = static_cast<int>(NEXP);
         unsigned long N_curves = objnum;
+
+        // //Sigma clip for periodograms with median and MAD
+        // for (unsigned long i = 0; i < objnum; i++) {
+        //     for (unsigned long j = 0; j < NEXP; j++) {
+        //         // sigma = 1.483 * MAD. We use 5 sigma clipping and remove only points above the threshold to avoid flaring but keep eclipses.
+        //         if ((flux_host[i * NEXP + j] - medians[i]) > 5 * 1.483 * mads[i]) {
+        //             fluxErr_host[i * NEXP + j] = INFINITY; // the value of flux_host should not matter if the error is infinite
+        //         }
+        //     }
+        // }
 
         // Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
         vector<float> periodograms = cudaRunFPW(t_host, flux_host, fluxErr_host, fgrid_host, N_data, N_curves, N_freqs, N_bins, N_freq_batch, N_curves_batch, N_samples);
@@ -218,6 +248,41 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
             }
         }
 
+        // Check if psids contains a specific value for debugging purposes
+        unsigned long psid_check = 157282011398486575; // all nans
+        // unsigned long psid_check = 157182014286022129; //Known periodogram
+        if (std::find(psids.begin(), psids.end(), psid_check) != psids.end()) {
+            std::cout << "Found psid " << psid_check << " in chunk " << k << std::endl;
+            //append the psid's periodograms to a file
+
+            //Find the index of the psid
+            auto it = std::find(psids.begin(), psids.end(), psid_check);
+            int index = std::distance(psids.begin(), it);
+
+            //Write the periodograms to a file
+            std::ofstream csvFile("test_periodogram.csv");
+
+            //Write the header
+            csvFile << "Frequency,Periodogram" << std::endl;
+
+            //Write the periodograms
+            for (unsigned long i = 0; i < N_freqs; i++) {
+                csvFile << fgrid[i] << "," << periodograms[index * N_samples * N_freqs + i] << std::endl;
+            }
+
+            // //write the header
+            // csvFile << "Time,Flux,FluxErr" << std::endl;
+
+            // //write the light curve
+            // for (unsigned long i = 0; i < NEXP; i++) {
+            //     csvFile << time[i] << "," << flux_host[index * NEXP + i] << "," << fluxErr_host[index * NEXP + i] << std::endl;
+            // }
+
+            //Close the file
+            csvFile.close();
+            std::cout << "Wrote periodograms to test_periodogram.csv" << std::endl;
+        }
+
         // Write results to file
         string results_filename = writeOutputFilePath(field, ccd, quad, filter);
         
@@ -230,6 +295,8 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
                     N_curves, N_samples, N_peaks, objstart);
 
         // Free memory
+        // delete[] medians;
+        // delete[] mads;
         delete[] flux_no_baseline;
         vector<float>().swap(periodograms);
         vector<float>().swap(peakFrequencies);

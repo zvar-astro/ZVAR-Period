@@ -21,6 +21,17 @@ float stdev(
   std::vector<float> // v
 );
 
+float median(
+    float*, // v
+    size_t // N
+);
+
+float mad(
+    float*, // v
+    size_t, // N
+    float // median
+);
+
 // Function to return both mean and stdev of vector
 std::tuple<float, float> pg_stats(
   std::vector<float> // v

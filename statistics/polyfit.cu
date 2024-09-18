@@ -36,6 +36,16 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
         }
     }
 
+    // // sigma clip with median and MAD
+    // for (int i = 0; i < N_curves; ++i) {
+    //     for (int j = 0; j < N_dat; ++j) {
+    //         // sigma = 1.483 * MAD. We use 5 sigma clipping and remove points above and below the median here.
+    //         if (std::abs(y[i * N_dat + j] - medians[i]) > 5 * 1.483 * mads[i]) {
+    //             weights[i * N_dat + j] = 0;
+    //         }
+    //     }
+    // }
+
     // Define other Gpufit parameters
     float tolerance = 1e-4;
     int max_n_iterations = 1000; // we care more about speed than accuracy, so n_iter is low.

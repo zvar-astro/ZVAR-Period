@@ -47,13 +47,13 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
     // Copy y and ivar to device
     float* ivar_host = new float[N_dat * N_curves];
-    // for (unsigned long i = 0; i < N_curves * N_dat; i++) {
-    //     ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
-    // }
-    
     for (unsigned long i = 0; i < N_curves * N_dat; i++) {
-        ivar_host[i] = 1.0;
+        ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
     }
+    
+    // for (unsigned long i = 0; i < N_curves * N_dat; i++) {
+    //     ivar_host[i] = 1.0;
+    // }
 
 
     // Run kernels for each batch of frequencies over all light curves

@@ -47,6 +47,43 @@ float stdev(std::vector<float> v) {
     return stdev;
 }
 
+float median(float* arr, size_t size) {
+    if (size == 0) {
+        throw std::invalid_argument("The input array is empty.");
+    }
+
+    size_t mid = size / 2;
+
+    // Use nth_element to partially sort the array
+    std::nth_element(arr, arr + mid, arr + size);
+
+    if (size % 2 == 0) {
+        // If even, find the other middle element and compute the average
+        float mid1 = arr[mid];
+        std::nth_element(arr, arr + mid - 1, arr + size);
+        float mid2 = arr[mid - 1];
+        return (mid1 + mid2) / 2.0f;
+    } else {
+        // If odd, return the middle element
+        return arr[mid];
+    }
+}
+
+float mad(float* arr, size_t size, float array_med) {
+    if (size == 0) {
+        throw std::invalid_argument("The input array is empty.");
+    }
+
+    // Create a temporary array to store the absolute differences
+    float* abs_diff = new float[size];
+    for (size_t i = 0; i < size; i++) {
+        abs_diff[i] = fabs(arr[i] - array_med);
+    }
+
+    // Compute the median of the absolute differences
+    return median(abs_diff, size);
+}
+
 
 std::tuple<float, float> pg_stats(std::vector<float> v) {
 

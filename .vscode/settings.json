@@ -85,5 +85,6 @@
     },
     // "cmake.generator": "Unix Makefiles",
     "cmake.generator": "Ninja",
-    "cmake.configureOnOpen": true
+    "cmake.configureOnOpen": true,
+    "C_Cpp.errorSquiggles": "disabled"
 }
