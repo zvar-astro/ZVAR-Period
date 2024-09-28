@@ -33,7 +33,8 @@ add_executable(cudaFPW main.cu
                ../msc/diagnostics.cpp
                ../msc/semaphores.cpp
                ../msc/memory_managers.cu
-               runFile.cu)
+               runFile.cu
+               )
 
 # Specify the CUDA standard
 set(CMAKE_BUILD_TYPE Release)

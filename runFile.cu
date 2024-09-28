@@ -49,8 +49,8 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
     //Make frequency grid
     // double fmin = 1.0; // 1 day
-    // double fmin = 1.0/30.0; // 30 day minimum period
-    double fmin = -1.0; // No max period
+    double fmin = 1.0/10.0; // 10 day maximum period
+    // double fmin = -1.0; // No max period
     double fmax = 1440.0 / 5; // 5 minute minimum period
     vector<double> fgrid_double = freq_grid(time_double, fmin, fmax, 3); //frequency grid in 1/days
     vector<float> fgrid(fgrid_double.begin(), fgrid_double.end()); //convert to floats
@@ -71,18 +71,18 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     logMessage(logpath, "Frequency grid size: " + std::to_string(N_freqs));
 
     //Handle memory for the instance
-    size_t hostMemory = getHostMemory(); //Obtain the total host memory
-    size_t allowedTotalMemory = hostMemory * 0.95; // Cap TOTAL usage at 95% of total memory
-    size_t allowedInstanceMemory = allowedTotalMemory / 8; // Divide allowed memory by number of instances
+    // size_t hostMemory = getHostMemory(); //Obtain the total host memory
+    // size_t allowedTotalMemory = hostMemory * 0.95; // Cap TOTAL usage at 95% of total memory
+    // size_t allowedInstanceMemory = allowedTotalMemory / 8; // Divide allowed memory by number of instances
 
-    //Decide how many chunks to run based on memory
-    size_t singleObjectPeriodogramMemory = N_freqs * N_samples * sizeof(float); // Memory for a single periodogram
-    size_t singleObjectDataMemory = NEXP * 2 * sizeof(float); // Memory for a single object's data (flux and fluxErr)
-    size_t singleObjectMetaDataMemory = sizeof(float) + sizeof(unsigned long) + 2 * sizeof(float); // Memory for a single object's metadata (ratioValid, psid, ra, dec)
-    size_t singleObjectMemory = singleObjectPeriodogramMemory + singleObjectDataMemory + singleObjectMetaDataMemory; // Memory for a single object
-    size_t allowedChunkMemory = allowedInstanceMemory * 0.95; // Cap CHUNK usage at 95% of instance memory to allow for overhead
-    size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
-    // unsigned long NCHUNK = 1 + (NSRC / allowedSourcesMemory); // Number of chunks to run
+    // //Decide how many chunks to run based on memory
+    // size_t singleObjectPeriodogramMemory = N_freqs * N_samples * sizeof(float); // Memory for a single periodogram
+    // size_t singleObjectDataMemory = NEXP * 2 * sizeof(float); // Memory for a single object's data (flux and fluxErr)
+    // size_t singleObjectMetaDataMemory = sizeof(float) + sizeof(unsigned long) + 2 * sizeof(float); // Memory for a single object's metadata (ratioValid, psid, ra, dec)
+    // size_t singleObjectMemory = singleObjectPeriodogramMemory + singleObjectDataMemory + singleObjectMetaDataMemory; // Memory for a single object
+    // size_t allowedChunkMemory = allowedInstanceMemory * 0.95; // Cap CHUNK usage at 95% of instance memory to allow for overhead
+    // size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
+    // unsigned long NCHUNK = 1 + 2 * (NSRC / allowedSourcesMemory); // Number of chunks to run
     unsigned long NCHUNK = 50;
     
     // std::cout << "Allowed sources per chunk: " << allowedSourcesMemory << std::endl;
@@ -101,6 +101,8 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     std::vector<unsigned long> psids(NSRC_PER_CHUNK, 0);
     std::vector<float> ra(NSRC_PER_CHUNK, 0.0f);
     std::vector<float> dec(NSRC_PER_CHUNK, 0.0f);
+    // float* medians = new float[NSRC_PER_CHUNK];
+    // float* mads = new float[NSRC_PER_CHUNK];
 
     auto stop_preprocess = chrono::high_resolution_clock::now();
     auto duration_preprocess = chrono::duration_cast<chrono::milliseconds>(stop_preprocess - start_preprocess);
@@ -138,9 +140,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         }
 
         // // find medians and mads
-        // float* medians = new float[objnum];
-        // float* mads = new float[objnum];
-
         // for (unsigned long i = 0; i < objnum; i++) {
         //     medians[i] = median(flux.data() + i * NEXP, NEXP);
         //     mads[i] = mad(flux.data() + i * NEXP, NEXP, medians[i]);
@@ -157,6 +156,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         // std::cout << "Semaphore acquired for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
 
         // Remove baseline from flux values
+        // float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), medians, mads, NEXP, NSRC_PER_CHUNK, 15);
         float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
         // float* flux_no_baseline = flux.data();
 
@@ -188,7 +188,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         // for (unsigned long i = 0; i < objnum; i++) {
         //     for (unsigned long j = 0; j < NEXP; j++) {
         //         // sigma = 1.483 * MAD. We use 5 sigma clipping and remove only points above the threshold to avoid flaring but keep eclipses.
-        //         if ((flux_host[i * NEXP + j] - medians[i]) > 5 * 1.483 * mads[i]) {
+        //         if ((flux_host[i * NEXP + j] - medians[i]) > 10 * 1.483 * mads[i]) {
         //             fluxErr_host[i * NEXP + j] = INFINITY; // the value of flux_host should not matter if the error is infinite
         //         }
         //     }
@@ -248,40 +248,40 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
             }
         }
 
-        // Check if psids contains a specific value for debugging purposes
-        unsigned long psid_check = 157282011398486575; // all nans
-        // unsigned long psid_check = 157182014286022129; //Known periodogram
-        if (std::find(psids.begin(), psids.end(), psid_check) != psids.end()) {
-            std::cout << "Found psid " << psid_check << " in chunk " << k << std::endl;
-            //append the psid's periodograms to a file
+        // // Check if psids contains a specific value for debugging purposes
+        // // unsigned long psid_check = 157282011398486575; // all nans
+        // unsigned long psid_check = 157442017747085095; //Known periodogram
+        // if (std::find(psids.begin(), psids.end(), psid_check) != psids.end()) {
+        //     std::cout << "Found psid " << psid_check << " in chunk " << k << std::endl;
+        //     //append the psid's periodograms to a file
 
-            //Find the index of the psid
-            auto it = std::find(psids.begin(), psids.end(), psid_check);
-            int index = std::distance(psids.begin(), it);
+        //     //Find the index of the psid
+        //     auto it = std::find(psids.begin(), psids.end(), psid_check);
+        //     int index = std::distance(psids.begin(), it);
 
-            //Write the periodograms to a file
-            std::ofstream csvFile("test_periodogram.csv");
+        //     //Write the periodograms to a file
+        //     std::ofstream csvFile("test_periodogram.csv");
 
-            //Write the header
-            csvFile << "Frequency,Periodogram" << std::endl;
+        //     //Write the header
+        //     csvFile << "Frequency,Periodogram" << std::endl;
 
-            //Write the periodograms
-            for (unsigned long i = 0; i < N_freqs; i++) {
-                csvFile << fgrid[i] << "," << periodograms[index * N_samples * N_freqs + i] << std::endl;
-            }
+        //     //Write the periodograms
+        //     for (unsigned long i = 0; i < N_freqs; i++) {
+        //         csvFile << fgrid[i] << "," << periodograms[index * N_samples * N_freqs + i] << std::endl;
+        //     }
 
-            // //write the header
-            // csvFile << "Time,Flux,FluxErr" << std::endl;
+        //     // //write the header
+        //     // csvFile << "Time,Flux,FluxErr" << std::endl;
 
-            // //write the light curve
-            // for (unsigned long i = 0; i < NEXP; i++) {
-            //     csvFile << time[i] << "," << flux_host[index * NEXP + i] << "," << fluxErr_host[index * NEXP + i] << std::endl;
-            // }
+        //     // //write the light curve
+        //     // for (unsigned long i = 0; i < NEXP; i++) {
+        //     //     csvFile << time[i] << "," << flux_host[index * NEXP + i] << "," << fluxErr_host[index * NEXP + i] << std::endl;
+        //     // }
 
-            //Close the file
-            csvFile.close();
-            std::cout << "Wrote periodograms to test_periodogram.csv" << std::endl;
-        }
+        //     //Close the file
+        //     csvFile.close();
+        //     std::cout << "Wrote periodograms to test_periodogram.csv" << std::endl;
+        // }
 
         // Write results to file
         string results_filename = writeOutputFilePath(field, ccd, quad, filter);

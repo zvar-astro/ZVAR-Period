@@ -22,6 +22,7 @@
  * 
  * @throws std::invalid_argument If an invalid model ID is provided.
 */
+// float* removeBaseline(float* times, float* y, float* dy, float* medians, float* mads, int N_dat, int N_curves, int modelID);
 float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves, int modelID);
 
 #endif // POLYFIT_CUH
