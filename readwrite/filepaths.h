@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <sstream>
+#include <iostream>
 #include "hdf5_utils.h"
 
 std::string writeInputFilePath(const int field, const int ccd, const int quad, const std::string &filter);

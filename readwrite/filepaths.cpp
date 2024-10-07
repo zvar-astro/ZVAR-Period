@@ -51,7 +51,7 @@ std::string writeOutputFilePath(const int field, const int ccd, const int quad, 
         throw std::runtime_error("Directory does not exist: " + directory);
     }
 
-    ss << std::setfill('0') << std::setw(7) << "fpw_";
+    ss << std::setfill('0') << std::setw(4) << "fpw_";
     ss << std::setfill('0') << std::setw(4) << field << "_";
     ss << std::setfill('0') << std::setw(2) << ccd << "_";
     ss << quad << "_z" << filter << ".h5";

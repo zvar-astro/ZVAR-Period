@@ -96,7 +96,7 @@ void normalizeLC(float*, int, int);
 
 
 // Function to create a new HDF5 file to store periodogram results
-void writeResults(std::string, int, int, int, int);
+void writeResults(std::string, int, int, int);
 
 
 // Function to append periodogram results to an existing HDF5 file

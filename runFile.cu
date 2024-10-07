@@ -84,6 +84,10 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     // size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
     // unsigned long NCHUNK = 1 + 2 * (NSRC / allowedSourcesMemory); // Number of chunks to run
     unsigned long NCHUNK = 50;
+
+    const int distance = 300;
+    const float threshold = 7.0f;
+    const int N_peaks = 50;
     
     // std::cout << "Allowed sources per chunk: " << allowedSourcesMemory << std::endl;
 
@@ -104,14 +108,38 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     // float* medians = new float[NSRC_PER_CHUNK];
     // float* mads = new float[NSRC_PER_CHUNK];
 
+    //Create output file
+    string results_filename = writeOutputFilePath(field, ccd, quad, filter);
+    writeResults(results_filename, NSRC, N_samples, N_peaks);
+
     auto stop_preprocess = chrono::high_resolution_clock::now();
     auto duration_preprocess = chrono::duration_cast<chrono::milliseconds>(stop_preprocess - start_preprocess);
     logMessage(logpath, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
 
     logMessage(logpath, "Loading in flux values over " + to_string(NCHUNK) + " chunks with " + to_string(NEXP) + " exposures per source");
+    cout << NEXP << " exposures per source" << endl;
+
+    // If there are no exposures, skip the file
+    if (NEXP == 0) {
+        logMessage(logpath, "No exposures found in file, skipping");
+        std::vector<float>().swap(time);
+        std::vector<float>().swap(flux);
+        std::vector<float>().swap(fluxErr);
+        std::vector<float>().swap(fgrid);
+        std::vector<unsigned long>().swap(psids);
+        std::vector<float>().swap(ra);
+        std::vector<float>().swap(dec);
+        std::vector<double>().swap(time_double);
+        std::vector<double>().swap(fgrid_double);
+        std::vector<int>().swap(freq_flags);
+        delete[] N_bins;
+
+        closeSemaphore(semaphore, SEMAPHORE_NAME);
+        return;
+    }
 
     for (unsigned long k = 0; k < NCHUNK; k++) {
-    // for (unsigned long k = 32; k < 37; k++) {
+    // for (unsigned long k = 48; k < 50; k++) {
         auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
         // Get the range of objects to analyze
         objstart = k * NSRC_PER_CHUNK;
@@ -138,12 +166,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
                 }
             }
         }
-
-        // // find medians and mads
-        // for (unsigned long i = 0; i < objnum; i++) {
-        //     medians[i] = median(flux.data() + i * NEXP, NEXP);
-        //     mads[i] = mad(flux.data() + i * NEXP, NEXP, medians[i]);
-        // }
 
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
@@ -184,16 +206,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         int N_data = static_cast<int>(NEXP);
         unsigned long N_curves = objnum;
 
-        // //Sigma clip for periodograms with median and MAD
-        // for (unsigned long i = 0; i < objnum; i++) {
-        //     for (unsigned long j = 0; j < NEXP; j++) {
-        //         // sigma = 1.483 * MAD. We use 5 sigma clipping and remove only points above the threshold to avoid flaring but keep eclipses.
-        //         if ((flux_host[i * NEXP + j] - medians[i]) > 10 * 1.483 * mads[i]) {
-        //             fluxErr_host[i * NEXP + j] = INFINITY; // the value of flux_host should not matter if the error is infinite
-        //         }
-        //     }
-        // }
-
         // Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
         vector<float> periodograms = cudaRunFPW(t_host, flux_host, fluxErr_host, fgrid_host, N_data, N_curves, N_freqs, N_bins, N_freq_batch, N_curves_batch, N_samples);
 
@@ -206,10 +218,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
         // Find the most significant peaks
         auto start_postprocess = chrono::high_resolution_clock::now(); // Time computing post-process
-
-        const int distance = 300;
-        const float threshold = 7.0f;
-        const int N_peaks = 50;
 
         vector<float> peakFrequencies(N_curves * N_samples * N_peaks, 0.0f);
         vector<float> peakSignificances(N_curves * N_samples * N_peaks, 0.0f);
@@ -248,55 +256,11 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
             }
         }
 
-        // // Check if psids contains a specific value for debugging purposes
-        // // unsigned long psid_check = 157282011398486575; // all nans
-        // unsigned long psid_check = 157442017747085095; //Known periodogram
-        // if (std::find(psids.begin(), psids.end(), psid_check) != psids.end()) {
-        //     std::cout << "Found psid " << psid_check << " in chunk " << k << std::endl;
-        //     //append the psid's periodograms to a file
-
-        //     //Find the index of the psid
-        //     auto it = std::find(psids.begin(), psids.end(), psid_check);
-        //     int index = std::distance(psids.begin(), it);
-
-        //     //Write the periodograms to a file
-        //     std::ofstream csvFile("test_periodogram.csv");
-
-        //     //Write the header
-        //     csvFile << "Frequency,Periodogram" << std::endl;
-
-        //     //Write the periodograms
-        //     for (unsigned long i = 0; i < N_freqs; i++) {
-        //         csvFile << fgrid[i] << "," << periodograms[index * N_samples * N_freqs + i] << std::endl;
-        //     }
-
-        //     // //write the header
-        //     // csvFile << "Time,Flux,FluxErr" << std::endl;
-
-        //     // //write the light curve
-        //     // for (unsigned long i = 0; i < NEXP; i++) {
-        //     //     csvFile << time[i] << "," << flux_host[index * NEXP + i] << "," << fluxErr_host[index * NEXP + i] << std::endl;
-        //     // }
-
-        //     //Close the file
-        //     csvFile.close();
-        //     std::cout << "Wrote periodograms to test_periodogram.csv" << std::endl;
-        // }
-
         // Write results to file
-        string results_filename = writeOutputFilePath(field, ccd, quad, filter);
-        
-        if (k == 0) {
-        // if (k == 32) {
-            writeResults(results_filename, N_curves, NSRC, N_samples, N_peaks);
-        }
-        
         appendResults(results_filename, psids.data(), ra.data(), dec.data(), ratioValid.data(), peakFrequencies.data(), peakSignificances.data(), periodogramMeans.data(), periodogramStdevs.data(),
-                    N_curves, N_samples, N_peaks, objstart);
+                N_curves, N_samples, N_peaks, objstart);
 
         // Free memory
-        // delete[] medians;
-        // delete[] mads;
         delete[] flux_no_baseline;
         vector<float>().swap(periodograms);
         vector<float>().swap(peakFrequencies);

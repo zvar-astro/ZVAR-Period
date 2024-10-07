@@ -38,7 +38,6 @@ int get_number_of_rows(hid_t dataset) {
     if (ndims != 1) return(0);
     hsize_t dims[ndims];
     H5Sget_simple_extent_dims(dspace,dims,NULL);
-
     return(dims[0]);
 }
 
@@ -573,7 +572,7 @@ void normalizeLC(float *flux, int N_s, int N_d) {
 // }
 
 
-void writeResults(std::string filename, int N_curves, int total_curves, int N_samples, int N_peaks) {
+void writeResults(std::string filename, int total_curves, int N_samples, int N_peaks) {
     // Create a new HDF5 file
     hid_t file_id = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
