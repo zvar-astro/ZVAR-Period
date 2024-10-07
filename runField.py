@@ -123,13 +123,9 @@ if __name__ == "__main__":
     
     task_queue = queue.Queue()
     
-    # for band in ['g', 'r']:
-    #     for ccd in range(1, 17):
-    #         for quad in range(1, 5):
-
-    for band in ['r']:
-        for ccd in range(4, 5):
-            for quad in range(1, 3):
+    for band in ['g', 'r']:
+        for ccd in range(1, 17):
+            for quad in range(1, 5):
                 #Check if the file exists
                 file_path = f"/data/zvar/matchfiles/{str(field).zfill(4)}/data_{str(field).zfill(4)}_{str(ccd).zfill(2)}_{str(quad)}_z{band}.h5"
                 if os.path.exists(file_path):
