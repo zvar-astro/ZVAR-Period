@@ -42,7 +42,7 @@ size_t getDeviceMemory(int deviceNum) {
     }
 }
 
-unsigned long calculateMaxGPUBatch(int deviceNum, size_t NEXP, size_t N_freq_batch, size_t N_samples, size_t NSRC_PER_CHUNK, dim3 blockSizeInd, dim3 blockSizeChi) {
+unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_batch, size_t N_samples, size_t N_curves) {
     // Memory usage per element in bytes
     const size_t float_size = sizeof(float);
     const size_t int_size = sizeof(int);
@@ -57,78 +57,61 @@ unsigned long calculateMaxGPUBatch(int deviceNum, size_t NEXP, size_t N_freq_bat
     size_t free_mem, total_mem_query;
     cudaMemGetInfo(&free_mem, &total_mem_query);
 
-    // Calculate available memory with a conservative buffer (e.g., 70% of free memory)
+    // Calculate available memory with safety margin
     size_t available_memory = static_cast<size_t>(0.70 * static_cast<double>(free_mem));
 
     // Calculate memory usage for each array
-    size_t t_memory = NEXP * float_size;
-    size_t y_memory = NEXP * NSRC_PER_CHUNK * float_size;
-    size_t ivar_memory = NEXP * NSRC_PER_CHUNK * float_size;
-    size_t freqs_memory = N_freq_batch * float_size;
-    size_t indices_memory = NEXP * N_freq_batch * int_size;
-    size_t deltaChiArr_memory = N_freq_batch * NSRC_PER_CHUNK * N_samples * float_size;
+    size_t t_memory = N_dat * float_size;
+    size_t y_memory = N_dat * N_curves * float_size;
+    size_t ivar_memory = N_dat * N_curves * float_size;
+    size_t freqs_memory = N_freqs_batch * float_size;
+    size_t indices_memory = N_dat * N_freqs_batch * int_size;
+    size_t deltaChiArr_memory = N_freqs_batch * N_samples * float_size;
     size_t N_bins_dev_memory = N_samples * int_size;
 
     // Calculate total memory usage per curve
     size_t total_memory_per_curve = y_memory + ivar_memory + deltaChiArr_memory;
 
     // Calculate the maximum N_curves_batch that fits in the available memory
-    unsigned long max_curves_memory = available_memory / total_memory_per_curve;
+    size_t max_N_curves_batch = available_memory / total_memory_per_curve;
 
     // Get device properties to check grid size limits
     cudaDeviceProp device_prop;
     cudaGetDeviceProperties(&device_prop, deviceNum);
 
-    // Calculate maximum grid size for cudaMakeIndices
-    size_t maxGridSizeXInd = device_prop.maxGridSize[0];
-    size_t maxGridSizeYInd = device_prop.maxGridSize[1];
+    // Define block size for cudaDeltaChi2Multibin
+    dim3 blockSizeChi(64, 8);
 
     // Calculate maximum grid size for cudaDeltaChi2Multibin
-    size_t maxGridSizeXChi = device_prop.maxGridSize[0];
-    size_t maxGridSizeYChi = device_prop.maxGridSize[1];
+    size_t maxGridSizeY = device_prop.maxGridSize[1];
 
     // Calculate the maximum number of curves per batch based on grid size limits
-    size_t max_curves_per_grid_ind = maxGridSizeYInd * blockSizeInd.y;
-    size_t max_curves_per_grid_chi = maxGridSizeYChi * blockSizeChi.y;
-
-    // Debug prints
-    std::cout << "Total memory: " << total_mem << " bytes" << std::endl;
-    std::cout << "Free memory: " << free_mem << " bytes" << std::endl;
-    std::cout << "Available memory: " << available_memory << " bytes" << std::endl;
-    std::cout << "Total memory per curve: " << total_memory_per_curve << " bytes" << std::endl;
-    std::cout << "Max curves based on memory: " << max_curves_memory << std::endl;
-    std::cout << "Max grid size X for Indices: " << maxGridSizeXInd << std::endl;
-    std::cout << "Max grid size Y for Indices: " << maxGridSizeYInd << std::endl;
-    std::cout << "Max grid size X for Chi: " << maxGridSizeXChi << std::endl;
-    std::cout << "Max grid size Y for Chi: " << maxGridSizeYChi << std::endl;
-    std::cout << "Max curves per grid for Indices: " << max_curves_per_grid_ind << std::endl;
-    std::cout << "Max curves per grid for Chi: " << max_curves_per_grid_chi << std::endl;
+    size_t max_curves_per_grid = maxGridSizeY * blockSizeChi.y;
 
     // Adjust max_N_curves_batch to ensure all allocations fit in available memory and grid size limits
     while (true) {
         size_t total_memory_usage = t_memory + 
-                                    max_curves_memory * (y_memory + ivar_memory) + 
+                                    max_N_curves_batch * (y_memory + ivar_memory) + 
                                     freqs_memory + 
                                     indices_memory + 
-                                    max_curves_memory * deltaChiArr_memory + 
+                                    max_N_curves_batch * deltaChiArr_memory + 
                                     N_bins_dev_memory;
 
-        if (total_memory_usage <= available_memory && 
-            max_curves_memory <= std::min(max_curves_per_grid_ind, max_curves_per_grid_chi)) {
+        if (total_memory_usage <= available_memory && max_N_curves_batch <= max_curves_per_grid) {
             break;
         }
 
-        if (max_curves_memory == 0) {
+        if (max_N_curves_batch == 0) {
             std::cerr << "Error: Not enough memory to allocate even a single curve batch" << std::endl;
             return 0;
         }
 
-        max_curves_memory--;
+        max_N_curves_batch--;
     }
+    max_N_curves_batch = std::min(max_N_curves_batch, 500ul);
 
-    return max_curves_memory;
+    return max_N_curves_batch;
 }
-
 
 unsigned long calculateNChunkBaseline(int deviceNum, size_t NSRC_PER_CHUNK, size_t N_dat, size_t modelparams) {
     // Memory usage per element in bytes

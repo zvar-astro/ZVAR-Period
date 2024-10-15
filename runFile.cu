@@ -76,7 +76,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
     //Decide how many GPU chunks to run based on memory
     unsigned long N_freq_batch = 1000000;
-    unsigned long N_curves_batch = 500;
+    unsigned long N_curves_batch = calculateMaxGPUBatch(device, NEXP, N_freq_batch, N_samples, NSRC_PER_CHUNK);
 
     const int distance = 300;
     const float threshold = 7.0f;
