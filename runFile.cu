@@ -73,11 +73,10 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     //Decide how many CPU chunks to run based on memory
     unsigned long NCHUNK = calculateMaxCPUBatch(N_freqs, N_samples, NEXP, NSRC);
     unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
-    std::cout << NCHUNK << " CPU chunks to run" << std::endl;
 
     //Decide how many GPU chunks to run based on memory
     unsigned long N_freq_batch = 1000000;
-    unsigned long N_curves_batch = calculateMaxGPUBatch(device, NEXP, N_freq_batch, N_samples, NSRC_PER_CHUNK);
+    unsigned long N_curves_batch = 500;
 
     const int distance = 300;
     const float threshold = 7.0f;
@@ -160,7 +159,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         // Remove baseline from flux values
         // unsigned long NCHUNK_BASELINE = 5;
         unsigned long NCHUNK_BASELINE = calculateNChunkBaseline(device, NSRC_PER_CHUNK, NEXP, 8);
-        std::cout << NCHUNK_BASELINE << " baseline chunks to run" << std::endl;
         unsigned long NSRC_PER_CHUNK_BASELINE = 1 + ((NSRC_PER_CHUNK-1) / NCHUNK_BASELINE);
 
         float* flux_no_baseline = new float[NSRC_PER_CHUNK * NEXP];

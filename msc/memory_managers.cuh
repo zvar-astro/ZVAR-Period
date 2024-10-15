@@ -11,7 +11,7 @@ unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t NEXP
 
 size_t getDeviceMemory(int deviceNum);
 
-unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_batch, size_t N_samples, size_t N_curves);
+unsigned long calculateMaxGPUBatch(int deviceNum, size_t NEXP, size_t N_freq_batch, size_t N_samples, size_t NSRC_PER_CHUNK, dim3 blockSizeInd, dim3 blockSizeChi);
 
 unsigned long calculateNChunkBaseline(int deviceNum, size_t NSRC_PER_CHUNK, size_t N_dat, size_t modelparams);
 #endif //MEMORY_MANAGERS_H
