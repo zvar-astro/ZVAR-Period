@@ -138,6 +138,8 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
         {f_day,    0.05f},      // 1 day
         {f_day/2,  0.02f},      // 2 day
         {f_day/3,  0.01f},      // 3 day
+        {f_day/4,  0.01f},      // 4 day
+        {f_day/5,  0.01f},      // 5 day
         {f_day*2,  0.05f},      // 1/2 day
         {f_day*3,  0.05f},
         {f_day*2 / 3, 0.02f},      // 3/2 day

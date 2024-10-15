@@ -70,35 +70,22 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     N_freqs = fgrid.size(); // Update the NFREQ value
     logMessage(logpath, "Frequency grid size: " + std::to_string(N_freqs));
 
-    //Handle memory for the instance
-    // size_t hostMemory = getHostMemory(); //Obtain the total host memory
-    // size_t allowedTotalMemory = hostMemory * 0.95; // Cap TOTAL usage at 95% of total memory
-    // size_t allowedInstanceMemory = allowedTotalMemory / 8; // Divide allowed memory by number of instances
+    //Decide how many CPU chunks to run based on memory
+    unsigned long NCHUNK = calculateMaxCPUBatch(N_freqs, N_samples, NEXP, NSRC);
+    unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
+    std::cout << NCHUNK << " CPU chunks to run" << std::endl;
 
-    // //Decide how many chunks to run based on memory
-    // size_t singleObjectPeriodogramMemory = N_freqs * N_samples * sizeof(float); // Memory for a single periodogram
-    // size_t singleObjectDataMemory = NEXP * 2 * sizeof(float); // Memory for a single object's data (flux and fluxErr)
-    // size_t singleObjectMetaDataMemory = sizeof(float) + sizeof(unsigned long) + 2 * sizeof(float); // Memory for a single object's metadata (ratioValid, psid, ra, dec)
-    // size_t singleObjectMemory = singleObjectPeriodogramMemory + singleObjectDataMemory + singleObjectMetaDataMemory; // Memory for a single object
-    // size_t allowedChunkMemory = allowedInstanceMemory * 0.95; // Cap CHUNK usage at 95% of instance memory to allow for overhead
-    // size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
-    // unsigned long NCHUNK = 1 + 2 * (NSRC / allowedSourcesMemory); // Number of chunks to run
-    unsigned long NCHUNK = 50;
+    //Decide how many GPU chunks to run based on memory
+    unsigned long N_freq_batch = 1000000;
+    unsigned long N_curves_batch = calculateMaxGPUBatch(device, NEXP, N_freq_batch, N_samples, NSRC_PER_CHUNK);
 
     const int distance = 300;
     const float threshold = 7.0f;
     const int N_peaks = 50;
     
-    // std::cout << "Allowed sources per chunk: " << allowedSourcesMemory << std::endl;
-
-    // std::cout << "Number of chunks: " << NCHUNK << std::endl;
-    // Load in flux values while iterating over chunks of sources
-    // Define Chunk parameters
-    int status;
-    unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
-    unsigned long objstart, objnum;
-
     // Initialize flux vectors in chunks
+    int status;
+    unsigned long objstart, objnum;
     std::vector<float> flux(NSRC_PER_CHUNK * NEXP, 0.0f);
     std::vector<float> fluxErr(NSRC_PER_CHUNK * NEXP, 1.0f);
     std::vector<float> ratioValid(NSRC_PER_CHUNK, 0);
@@ -139,15 +126,10 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     }
 
     for (unsigned long k = 0; k < NCHUNK; k++) {
-    // for (unsigned long k = 48; k < 50; k++) {
         auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
         // Get the range of objects to analyze
         objstart = k * NSRC_PER_CHUNK;
-        if (k < NCHUNK-1) {
-            objnum = NSRC_PER_CHUNK;
-        } else {
-            objnum = NSRC - (k * NSRC_PER_CHUNK);
-        }
+        unsigned long objnum = (k < NCHUNK - 1) ? NSRC_PER_CHUNK : (NSRC - objstart);
         logMessage(logpath, "Chunk " + to_string(k+1) + ": Starting at source " + to_string(objstart) + ", loading in " + to_string(objnum) + " sources");
 
         // Load the flux values
@@ -169,23 +151,39 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
-        // logMessage(logpath, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
 
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
         //Utilize a semaphore to prevent multiple threads from accessing the GPU at the same time
         acquireSemaphore(semaphore);
-        // std::cout << "Semaphore acquired for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
 
         // Remove baseline from flux values
-        // float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), medians, mads, NEXP, NSRC_PER_CHUNK, 15);
-        float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
+        // unsigned long NCHUNK_BASELINE = 5;
+        unsigned long NCHUNK_BASELINE = calculateNChunkBaseline(device, NSRC_PER_CHUNK, NEXP, 8);
+        std::cout << NCHUNK_BASELINE << " baseline chunks to run" << std::endl;
+        unsigned long NSRC_PER_CHUNK_BASELINE = 1 + ((NSRC_PER_CHUNK-1) / NCHUNK_BASELINE);
+
+        float* flux_no_baseline = new float[NSRC_PER_CHUNK * NEXP];
+
+        for (unsigned long k = 0; k < NCHUNK_BASELINE; k++) {
+            unsigned long objstart_baseline = k * NSRC_PER_CHUNK_BASELINE;
+            unsigned long objnum_baseline = (k < NCHUNK_BASELINE - 1) ? NSRC_PER_CHUNK_BASELINE : (NSRC_PER_CHUNK - objstart_baseline);
+
+            float* flux_no_baseline_chunk = removeBaseline(time.data(), flux.data() + objstart_baseline * NEXP, fluxErr.data() + objstart_baseline * NEXP, NEXP, objnum_baseline, 15);
+
+            for (unsigned long i = 0; i < objnum_baseline; i++) {
+                for (unsigned long j = 0; j < NEXP; j++) {
+                    flux_no_baseline[(objstart_baseline + i) * NEXP + j] = flux_no_baseline_chunk[i * NEXP + j];
+                }
+            }
+            delete[] flux_no_baseline_chunk;
+        }
+        // float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
         // float* flux_no_baseline = flux.data();
 
         cudaError_t cudaStatus = cudaDeviceSynchronize();
         checkCudaError(cudaStatus, "cudaDeviceSynchronize after removeBaseline");
 
-        // std::cout << "Semaphore releasing for baseline removal in quadrant: " << quad << " chunk: " << k << std::endl;
         releaseSemaphore(semaphore);
         auto stop_removebaseline = chrono::high_resolution_clock::now();
         auto duration_removebaseline = chrono::duration_cast<chrono::milliseconds>(stop_removebaseline - start_removebaseline);
@@ -195,10 +193,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         auto start_periodogram = chrono::high_resolution_clock::now(); // Time running periodogram
         //Open the semaphore for the periodogram
         acquireSemaphore(semaphore);
-        // std::cout << "Semaphore acquired for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
 
-        unsigned long N_freq_batch = 1000000;
-        unsigned long N_curves_batch = 500;
         float* t_host = time.data();
         float* flux_host = flux_no_baseline;
         float* fluxErr_host = fluxErr.data();
@@ -271,8 +266,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         auto stop_postprocess = chrono::high_resolution_clock::now();
         auto duration_postprocess = chrono::duration_cast<chrono::milliseconds>(stop_postprocess - start_postprocess);
         logMessage(logpath, "Time to compute post-processing: " + to_string(duration_postprocess.count()) + " milliseconds");
-
-
     }
 
     // Free vectors from memory
