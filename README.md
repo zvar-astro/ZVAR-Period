@@ -5,4 +5,4 @@ light curves (see [ZVAR-Forced-Phot](https://github.com/zvar-astro/ZVAR-Forced-P
 for the ZVAR project.
 
 Last Modified by: Samuel Whitebook
-On Date: 09/28/24
+On Date: 10/15/2024
