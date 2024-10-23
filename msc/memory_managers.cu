@@ -14,7 +14,7 @@ size_t getHostMemory() {
 
 unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t NEXP, size_t NSRC) {
     size_t hostMemory = getHostMemory(); // Obtain the total host memory
-    size_t allowedTotalMemory = static_cast<size_t>(0.95 * static_cast<double>(hostMemory)); // Cap TOTAL usage at 95% of total memory
+    size_t allowedTotalMemory = static_cast<size_t>(0.9 * static_cast<double>(hostMemory)); // Cap TOTAL usage at 95% of total memory
     size_t allowedInstanceMemory = allowedTotalMemory / 8; // Divide allowed memory by number of instances
 
     // Decide how many CPU chunks to run based on memory

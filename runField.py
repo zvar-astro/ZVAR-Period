@@ -150,6 +150,11 @@ if __name__ == "__main__":
     for thread in threads:
         thread.join()
 
+    #After all threads have completed, find candidates
+    if not stop_event.is_set():
+        FindCandidates = "/data/swhitebook/github/ZVAR-Utilities/PeriodicityCandidates/FindCandidates.py"
+        subprocess.run(['python3', FindCandidates, str(field), str(field)])
+
     if stop_event.is_set():
         cleanup_semaphores(semaphore_names)
         print("An error occurred in one of the threads. Exiting with error code.")
