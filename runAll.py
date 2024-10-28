@@ -97,9 +97,39 @@ def resume_computation():
         with open(log_file, 'a') as log:
             log.write(f'Completed field: {str(field)}\n')
 
+
+def run_queued():
+    #Clean out semaphores
+    clean_semaphores()
+    
+    field_list = np.loadtxt('/data/zvar/logs/manual_queue.txt', dtype=int)
+    log_file = '/data/zvar/logs/field_log.txt'
+    
+    # Read the log file to find the last completed field
+    last_completed_field = None
+    if os.path.exists(log_file):
+        with open(log_file, 'r') as log:
+            lines = log.readlines()
+            if lines:
+                last_completed_field = int(lines[-1].strip().split()[-1])
+    
+    # Resume computation from the next field
+    algorithm = 'fpw'
+    for field in field_list:
+        field_folder = f'/data/zvar/zvar_results/{str(field).zfill(4)}'
+        
+        # Check if the folder exists, if not, create it
+        if not os.path.exists(field_folder):
+            os.makedirs(field_folder, exist_ok=True)
+        
+        subprocess.run(['python3', 'runField.py', str(field), algorithm])
+        with open(log_file, 'a') as log:
+            log.write(f'Completed field: {str(field)}\n')
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run field processing functions.')
-    parser.add_argument('function', choices=['run_all', 'run_individual', 'resume_computation'], help='Function to run')
+    parser.add_argument('function', choices=['run_all', 'run_individual', 'resume_computation', 'run_queued'], help='Function to run')
     parser.add_argument('--field', type=int, help='Field number (required for run_individual)')
 
     args = parser.parse_args()
@@ -112,3 +142,5 @@ if __name__ == "__main__":
         run_individual(args.field)
     elif args.function == 'resume_computation':
         resume_computation()
+    elif args.function == 'run_queued':
+        run_queued()
