@@ -107,29 +107,36 @@ def worker(task_queue, device, subdivision, algorithm, stop_event):
         task_queue.task_done()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python runField.py <field> <algorithm>")
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
+        print("Usage: python runField.py <field> <algorithm> [<band>]")
         sys.exit(1)
     
     field = sys.argv[1]
     algorithm = sys.argv[2]
+    band = sys.argv[3] if len(sys.argv) == 4 else None
 
     if algorithm not in ['schuster', 'fpw']:
         print("ERROR: algorithm must be one of 'schuster' or 'fpw'")
-        print("Usage: python runField.py <field> <algorithm>")
+        print("Usage: python runField.py <field> <algorithm> [<band>]")
+        sys.exit(1)
+
+    if band and band not in ['g', 'r']:
+        print("ERROR: band must be one of 'g' or 'r'")
+        print("Usage: python runField.py <field> <algorithm> [<band>]")
         sys.exit(1)
 
     semaphores, semaphore_names = create_semaphores()
     
     task_queue = queue.Queue()
     
-    for band in ['g', 'r']:
+    bands = [band] if band else ['g', 'r']
+    for b in bands:
         for ccd in range(1, 17):
             for quad in range(1, 5):
                 #Check if the file exists
-                file_path = f"/data/zvar/matchfiles/{str(field).zfill(4)}/data_{str(field).zfill(4)}_{str(ccd).zfill(2)}_{str(quad)}_z{band}.h5"
+                file_path = f"/data/zvar/matchfiles/{str(field).zfill(4)}/data_{str(field).zfill(4)}_{str(ccd).zfill(2)}_{str(quad)}_z{b}.h5"
                 if os.path.exists(file_path):
-                    task_queue.put((field, ccd, quad, band))
+                    task_queue.put((field, ccd, quad, b))
     
     num_threads = 8
     threads = []

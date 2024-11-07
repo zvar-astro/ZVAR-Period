@@ -34,7 +34,7 @@ def run_all():
         with open(log_file, 'a') as log:
             log.write(f'Completed field: {str(field)}\n')
 
-def run_individual(field):
+def run_individual(field, band=None):
     #Clean out semaphores
     clean_semaphores()
 
@@ -44,25 +44,34 @@ def run_individual(field):
     if not os.path.exists(field_folder):
         os.makedirs(field_folder, exist_ok=True)
     
-    # Delete all files in the field's folder
+    # Delete all files in the field's folder, or if band is specified, only delete the files for that band
     for filename in os.listdir(field_folder):
         file_path = os.path.join(field_folder, filename)
         try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                os.rmdir(file_path)
+            if band:
+                if filename.endswith(f'_z{band}.h5'):
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+            else:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    os.rmdir(file_path)
         except Exception as e:
             print(f'Failed to delete {file_path}. Reason: {e}')
     
     # Run the field
     algorithm = 'fpw'
-    subprocess.run(['python3', 'runField.py', str(field), algorithm])
+    if band:
+        subprocess.run(['python3', 'runField.py', str(field), algorithm, band])
+    else:
+        subprocess.run(['python3', 'runField.py', str(field), algorithm])
     
-    # Log the completion
-    log_file = '/data/zvar/logs/field_log.txt'
-    with open(log_file, 'a') as log:
-        log.write(f'Completed field: {str(field)}\n')
+    # Log the completion if we ran the full field, or if both bands are now done
+    if not band or (band == 'r' and os.path.exists(os.path.join(field_folder, f'fpw_{str(field).zfill(4)}_16_4_zg.h5'))):
+        log_file = '/data/zvar/logs/field_log.txt'
+        with open(log_file, 'a') as log:
+            log.write(f'Completed field: {str(field)}\n')
 
 def resume_computation():
     #Clean out semaphores
@@ -131,6 +140,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run field processing functions.')
     parser.add_argument('function', choices=['run_all', 'run_individual', 'resume_computation', 'run_queued'], help='Function to run')
     parser.add_argument('--field', type=int, help='Field number (required for run_individual)')
+    parser.add_argument('--band', choices=['g', 'r'], help='Band to process (optional for run_individual)')
 
     args = parser.parse_args()
 
@@ -139,7 +149,12 @@ if __name__ == "__main__":
     elif args.function == 'run_individual':
         if args.field is None:
             parser.error('The --field argument is required for run_individual')
-        run_individual(args.field)
+        if args.band and args.band not in ['g', 'r']:
+            parser.error('The --band argument must be one of "g" or "r"')
+        elif args.band:
+            run_individual(args.field, args.band)
+        else:
+            run_individual(args.field)
     elif args.function == 'resume_computation':
         resume_computation()
     elif args.function == 'run_queued':
