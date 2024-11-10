@@ -15,6 +15,7 @@ def clean_semaphores():
         except Exception as e:
             print(f'Failed to delete {file_path}. Reason: {e}')
 
+
 def run_all():
     #Clean out semaphores
     clean_semaphores()
@@ -33,6 +34,7 @@ def run_all():
         subprocess.run(['python3', 'runField.py', str(field), algorithm])
         with open(log_file, 'a') as log:
             log.write(f'Completed field: {str(field)}\n')
+
 
 def run_individual(field, band=None):
     #Clean out semaphores
@@ -73,25 +75,28 @@ def run_individual(field, band=None):
         with open(log_file, 'a') as log:
             log.write(f'Completed field: {str(field)}\n')
 
+
 def resume_computation():
-    #Clean out semaphores
+    # Clean out semaphores
     clean_semaphores()
     
     field_list = np.arange(245, 1876)
     log_file = '/data/zvar/logs/field_log.txt'
     
-    # Read the log file to find the last completed field
-    last_completed_field = None
+    # Read the log file to find the completed fields
+    completed_fields = set()
     if os.path.exists(log_file):
         with open(log_file, 'r') as log:
             lines = log.readlines()
-            if lines:
-                last_completed_field = int(lines[-1].strip().split()[-1])
+            for line in lines:
+                completed_fields.add(int(line.strip().split()[-1]))
     
     # Determine the starting point
     start_index = 0
-    if last_completed_field is not None:
-        start_index = np.where(field_list == last_completed_field)[0][0] + 1
+    for i, field in enumerate(field_list):
+        if field not in completed_fields:
+            start_index = i
+            break
     
     # Resume computation from the next field
     algorithm = 'fpw'
