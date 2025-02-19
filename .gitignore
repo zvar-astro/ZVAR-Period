@@ -8,3 +8,9 @@
 # Ignore VSCode settings
 .vscode/
 /test_main.cu
+data/
+*.json
+build/CMakeFiles/
+build/CMakeCache.txt
+build/cmake_install.cmake
+build/Makefile

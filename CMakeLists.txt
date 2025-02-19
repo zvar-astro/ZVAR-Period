@@ -21,18 +21,18 @@ include_directories(${HDF5_INCLUDE_DIRS})
 
 # Add the executable
 add_executable(cudaFPW main.cu
-               ../periodograms/frequencyGrid.cpp
-               ../periodograms/FPW/kernels.cu 
-               ../periodograms/FPW/cpu_functions.cpp 
-               ../periodograms/FPW/wrappers.cu 
-               ../statistics/polyfit.cu
-               ../statistics/curve_statistics.cu
-               ../statistics/peak_utils.cu
-               ../readwrite/hdf5_utils.cpp
-               ../readwrite/filepaths.cpp
-               ../msc/diagnostics.cpp
-               ../msc/semaphores.cpp
-               ../msc/memory_managers.cu
+               periodograms/frequencyGrid.cpp
+               periodograms/FPW/kernels.cu 
+               periodograms/FPW/cpu_functions.cpp 
+               periodograms/FPW/wrappers.cu 
+               statistics/polyfit.cu
+               statistics/curve_statistics.cu
+               statistics/peak_utils.cu
+               readwrite/hdf5_utils.cpp
+               readwrite/filepaths.cpp
+               msc/diagnostics.cpp
+               msc/semaphores.cpp
+               msc/memory_managers.cu
                runFile.cu
                )
 
@@ -47,10 +47,10 @@ target_link_libraries(cudaFPW PRIVATE ${CUDA_LIBRARIES} ${CUDA_curand_LIBRARY})
 target_link_libraries(cudaFPW PRIVATE ${HDF5_LIBRARIES})
 
 # Include Eigen headers
-include_directories("/data/swhitebook/Packages/eigen")
-include_directories("/data/swhitebook/Packages/Gpufit/Gpufit")
+include_directories("/data/dev/ZVAR-Period/data/eigen")
+include_directories("/data/dev/ZVAR-Period/data/Gpufit/Gpufit")
 
-target_link_libraries(cudaFPW PRIVATE /data/swhitebook/Packages/Gpufit/build/libGpufit.so)
+target_link_libraries(cudaFPW PRIVATE /data/dev/ZVAR-Period/data/Gpufit-build/Gpufit/libGpufit.so)
 if(OpenMP_CXX_FOUND)
     target_compile_options(cudaFPW PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>)
     target_link_libraries(cudaFPW PRIVATE OpenMP::OpenMP_CXX)
