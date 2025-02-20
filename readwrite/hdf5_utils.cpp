@@ -92,7 +92,7 @@ int get_exposures(hid_t table, double *bjd, int begin, int N) {
 
   // Read data from HDF5 table
   hid_t exposures_tid = H5Tcreate(H5T_COMPOUND,sizeof(exposures));
-  H5Tinsert(exposures_tid,"bjd",HOFFSET(exposures,bjd),H5T_NATIVE_DOUBLE);
+  H5Tinsert(exposures_tid,"mjd",HOFFSET(exposures,bjd),H5T_NATIVE_DOUBLE);
   data = (exposures *) malloc(sizeof(exposures)*N);
   status = H5Dread(table,exposures_tid,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
 
@@ -163,7 +163,7 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N) {
 
   // Read data from HDF5 table
   hid_t sources_tid = H5Tcreate(H5T_COMPOUND,sizeof(sources));
-  H5Tinsert(sources_tid,"gaia_id",HOFFSET(sources,psid),H5T_NATIVE_ULONG);
+  H5Tinsert(sources_tid,"objectid",HOFFSET(sources,psid),H5T_NATIVE_ULONG);
   data = (sources *) malloc(sizeof(sources)*N);
   status = H5Dread(table,sources_tid,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
 
@@ -263,7 +263,7 @@ int get_sources_chunk(std::string filename,
 
   // Read data from table
   hid_t sources_tid = H5Tcreate(H5T_COMPOUND,sizeof(sources));
-  H5Tinsert(sources_tid,"gaia_id",HOFFSET(sources,psid),H5T_NATIVE_ULONG);
+  H5Tinsert(sources_tid,"psid",HOFFSET(sources,psid),H5T_NATIVE_ULONG);
   H5Tinsert(sources_tid,"ra",HOFFSET(sources,ra),H5T_NATIVE_FLOAT);
   H5Tinsert(sources_tid,"decl",HOFFSET(sources,dec),H5T_NATIVE_FLOAT);
   data = (sources *) malloc(sizeof(sources)*objnum);
@@ -274,6 +274,8 @@ int get_sources_chunk(std::string filename,
     psids[i] = data[i].psid;
     ra[i] = data[i].ra;
     dec[i] = data[i].dec;
+    ra[i] = 0.0f;
+    dec[i] = 0.0f;
   }
 
   // Deallocate memory
@@ -381,7 +383,7 @@ int get_sourcedata_chunk(std::string filename,
   // Read data from table
   hid_t sourcedata_tid = H5Tcreate(H5T_COMPOUND,sizeof(sourcedata));
   H5Tinsert(sourcedata_tid,"flux",HOFFSET(sourcedata,flux),H5T_NATIVE_FLOAT);
-  H5Tinsert(sourcedata_tid,"flux_err",HOFFSET(sourcedata,fluxErr),H5T_NATIVE_FLOAT);
+  H5Tinsert(sourcedata_tid,"fluxerr",HOFFSET(sourcedata,fluxErr),H5T_NATIVE_FLOAT);
   data = (sourcedata *) malloc(sizeof(sourcedata)*objnum*N);
   status = H5Dread(table,sourcedata_tid,memspace,dataspace,H5P_DEFAULT,data);
 

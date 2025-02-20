@@ -12,14 +12,17 @@ void checkCudaError(cudaError_t err, const char* msg) {
  * 
  * Computes periodograms for every light curve in a matchfile. Finds the most significant independent peaks. Writes the results to an HDF5 file.
  * 
- * @param field The field number of the matchfile
- * @param ccd The ccd number of the matchfile 1-16
- * @param quad The quadrant number of the matchfile 1-4
- * @param filter The filter of the matchfile "g", "r", "i"
+ * @param hdf_filename The path to the matchfile
  * @param logpath The path to the log file
  * 
  */
-void runFile(int field, int ccd, int quad, std::string filter, int device, std::string logpath) {
+void runFile(std::string hdf_filename, int device, std::string logpath) {
+
+    cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        std::cerr << "unexpected CUDA error (runFile): " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
     omp_set_num_threads(4); // Set the number of threads for OpenMP
 
@@ -30,9 +33,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
     auto start_full = chrono::high_resolution_clock::now(); //Time full run
     auto start_preprocess = chrono::high_resolution_clock::now(); //Time loading and pre-processing
-
-    // Write the file path for the light curves
-    std::string hdf_filename = writeInputFilePath(field, ccd, quad, filter);
 
     logMessage(logpath, "Running on file: " + hdf_filename);
 
@@ -75,7 +75,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
 
     //Decide how many GPU chunks to run based on memory
-    unsigned long N_freq_batch = 1000000;
+    unsigned long N_freq_batch = 100000;
     unsigned long N_curves_batch = calculateMaxGPUBatch(device, NEXP, N_freq_batch, N_samples, NSRC_PER_CHUNK);
 
     const int distance = 300;
@@ -95,7 +95,10 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     // float* mads = new float[NSRC_PER_CHUNK];
 
     //Create output file
-    string results_filename = writeOutputFilePath(field, ccd, quad, filter);
+    // string results_filename = writeOutputFilePath(field, ccd, quad, filter);
+    // make the results_filename as the hdf_filename with the .h5 replaced with _results.h5
+    string results_filename = hdf_filename;
+    results_filename.replace(results_filename.end()-3, results_filename.end(), "_results.h5");
     writeResults(results_filename, NSRC, N_samples, N_peaks);
 
     auto stop_preprocess = chrono::high_resolution_clock::now();
@@ -103,7 +106,6 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     logMessage(logpath, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
 
     logMessage(logpath, "Loading in flux values over " + to_string(NCHUNK) + " chunks with " + to_string(NEXP) + " exposures per source");
-    cout << NEXP << " exposures per source" << endl;
 
     // If there are no exposures, skip the file
     if (NEXP == 0) {
@@ -129,7 +131,7 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         // Get the range of objects to analyze
         objstart = k * NSRC_PER_CHUNK;
         unsigned long objnum = (k < NCHUNK - 1) ? NSRC_PER_CHUNK : (NSRC - objstart);
-        logMessage(logpath, "Chunk " + to_string(k+1) + ": Starting at source " + to_string(objstart) + ", loading in " + to_string(objnum) + " sources");
+        logMessage(logpath, "Chunk " + to_string(k+1) + "/" + to_string(NCHUNK) + ": Starting at source " + to_string(objstart) + ", loading in " + to_string(objnum) + " sources");
 
         // Load the flux values
         status = get_sourcedata_chunk(hdf_filename, flux.data(), fluxErr.data(), ratioValid.data(), dd_indices, objstart, objnum, NEXP);
@@ -163,24 +165,28 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
 
         float* flux_no_baseline = new float[NSRC_PER_CHUNK * NEXP];
 
-        for (unsigned long k = 0; k < NCHUNK_BASELINE; k++) {
-            unsigned long objstart_baseline = k * NSRC_PER_CHUNK_BASELINE;
-            unsigned long objnum_baseline = (k < NCHUNK_BASELINE - 1) ? NSRC_PER_CHUNK_BASELINE : (NSRC_PER_CHUNK - objstart_baseline);
+        // for (unsigned long k = 0; k < NCHUNK_BASELINE; k++) {
+        //     std::cout << "Removing baseline for chunk " << k << " of " << NCHUNK_BASELINE << std::endl;
+        //     unsigned long objstart_baseline = k * NSRC_PER_CHUNK_BASELINE;
+        //     unsigned long objnum_baseline = (k < NCHUNK_BASELINE - 1) ? NSRC_PER_CHUNK_BASELINE : (NSRC_PER_CHUNK - objstart_baseline);
 
-            float* flux_no_baseline_chunk = removeBaseline(time.data(), flux.data() + objstart_baseline * NEXP, fluxErr.data() + objstart_baseline * NEXP, NEXP, objnum_baseline, 15);
+        //     float* flux_no_baseline_chunk = removeBaseline(time.data(), flux.data() + objstart_baseline * NEXP, fluxErr.data() + objstart_baseline * NEXP, NEXP, objnum_baseline, 15);
 
-            for (unsigned long i = 0; i < objnum_baseline; i++) {
-                for (unsigned long j = 0; j < NEXP; j++) {
-                    flux_no_baseline[(objstart_baseline + i) * NEXP + j] = flux_no_baseline_chunk[i * NEXP + j];
-                }
-            }
-            delete[] flux_no_baseline_chunk;
-        }
+        //     for (unsigned long i = 0; i < objnum_baseline; i++) {
+        //         for (unsigned long j = 0; j < NEXP; j++) {
+        //             flux_no_baseline[(objstart_baseline + i) * NEXP + j] = flux_no_baseline_chunk[i * NEXP + j];
+        //         }
+        //     }
+        //     delete[] flux_no_baseline_chunk;
+        // }
         // float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
         // float* flux_no_baseline = flux.data();
 
         cudaError_t cudaStatus = cudaDeviceSynchronize();
-        checkCudaError(cudaStatus, "cudaDeviceSynchronize after removeBaseline");
+        if (cudaStatus != cudaSuccess) {
+            std::cerr << "CUDA error cudaDeviceSynchronize: " << cudaGetErrorString(cudaStatus) << std::endl;
+            exit(EXIT_FAILURE);
+        }
 
         releaseSemaphore(semaphore);
         auto stop_removebaseline = chrono::high_resolution_clock::now();
@@ -193,7 +199,8 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
         acquireSemaphore(semaphore);
 
         float* t_host = time.data();
-        float* flux_host = flux_no_baseline;
+        // float* flux_host = flux_no_baseline;
+        float* flux_host = flux.data();
         float* fluxErr_host = fluxErr.data();
         float* fgrid_host = fgrid.data();
         int N_data = static_cast<int>(NEXP);
@@ -284,6 +291,10 @@ void runFile(int field, int ccd, int quad, std::string filter, int device, std::
     auto stop_full = chrono::high_resolution_clock::now();
     auto duration_full = chrono::duration_cast<chrono::seconds>(stop_full - start_full);
     logMessage(logpath, "Time for full run: " + to_string(duration_full.count()) + " seconds");
-    cout << "matchfile " << field << " " << ccd << " " << quad << " " << filter 
-          << " finished in " << duration_full.count() << " seconds" << endl;
+    // cout << "matchfile " << field << " " << ccd << " " << quad << " " << filter 
+    //       << " finished in " << duration_full.count() << " seconds" << endl;
+    cout << "matchfile " << hdf_filename << " finished in " << duration_full.count() << " seconds" << endl;
+
+    // print where the data was written
+    logMessage(logpath, "Results written to: " + results_filename);
 }
