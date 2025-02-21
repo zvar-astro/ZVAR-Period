@@ -9,15 +9,16 @@ ENV EIGEN3_INCLUDE_DIR="/app/packages/eigen"
 ENV GPUFIT_INCLUDE_DIR="/app/packages/Gpufit/Gpufit"
 ENV GPUFIT_LIB_DIR="/app/packages/Gpufit-build/Gpufit"
 
+ENV CUDA_DEB_URL="https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda-repo-debian12-12-6-local_12.6.0-560.28.03-1_amd64.deb"
+ENV CUDA_APT_PACKAGE="cuda-toolkit-12-6"
+
 RUN apt-get update && apt-get install -y wget && \
-    wget --no-verbose https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda-repo-debian12-12-8-local_12.8.0-570.86.10-1_amd64.deb -O cuda-repo.debian12-12-8-local_12.8.0-570.86.10-1_amd64.deb && \
-    wget --no-verbose https://sh.rustup.rs -O /rustup-init.sh && \
     wget --no-verbose https://astral.sh/uv/install.sh -O /uv-installer.sh && \
-    dpkg -i cuda-repo.debian12-12-8-local_12.8.0-570.86.10-1_amd64.deb && \
-    rm cuda-repo.debian12-12-8-local_12.8.0-570.86.10-1_amd64.deb && \
-    cp /var/cuda-repo-debian12-12-8-local/cuda-*-keyring.gpg /usr/share/keyrings/ && \
-    apt-get update && apt-get install -y curl wget git cmake build-essential libboost-all-dev python3-dev cuda-toolkit-12-8 cargo libhdf5-serial-dev && \
-    sh /rustup-init.sh -y && rm /rustup-init.sh && \
+    wget --no-verbose ${CUDA_DEB_URL} -O cuda.deb && \
+    dpkg -i cuda.deb && rm cuda.deb && \
+    cp /var/cuda-repo-debian12-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/ && \
+    apt-get update && apt-get install -y git build-essential cmake libboost-all-dev \
+    python3-dev libhdf5-serial-dev ${CUDA_APT_PACKAGE} && \
     sh /uv-installer.sh && rm /uv-installer.sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
     
@@ -51,5 +52,8 @@ RUN source .venv/bin/activate && \
     cmake ../src && \
     make
 
-# have a command that just keeps the container alive so we can exec into it
-CMD ["tail", "-f", "/dev/null"]
+# # RUN FPW on all the files
+# CMD ["bash", "-c", "source .venv/bin/activate && cd src && uv run python runFiles.py"]
+
+# Keep the container running
+CMD ["bash", "-c", "tail -f /dev/null"]

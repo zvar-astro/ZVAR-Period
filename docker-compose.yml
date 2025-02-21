@@ -5,3 +5,13 @@ services:
       dockerfile: Dockerfile
     image: tdulaz/zvar-fpw
     restart: always
+    # add a volume to bind to the host's /data/zforce/lightcurves
+    volumes:
+      - /data/zforce/lightcurves:/data/lightcurves
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -78,7 +78,7 @@ def worker(task_queue, device, subdivision, algorithm, stop_event):
         task_queue.task_done()
 
 if __name__ == "__main__":
-    data_dir = os.environ.get('DATA_DIR', '/data/zforce/lightcurves')
+    data_dir = os.environ.get('DATA_DIR', '/data/lightcurves')
     num_threads = os.environ.get('NUM_THREADS', 1)
     
     algorithm = 'fpw'
