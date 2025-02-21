@@ -42,7 +42,7 @@ def run_cudaFPW(file_path, device, subdivision, stop_event):
         '-c',
         # str(9 * device) + '-' + str(9 * device + 8),
         str(8 * device + 4 * subdivision) + '-' + str(8 * device + 4 * subdivision + 3),
-        './build/cudaFPW',
+        '../build/cudaFPW',
         str(file_path),
         str(device)
     ]

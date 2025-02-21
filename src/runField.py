@@ -41,7 +41,7 @@ def run_cudaFPW(field, ccd, quad, band, device, subdivision, stop_event):
         '-c',
         # str(9 * device) + '-' + str(9 * device + 8),
         str(8 * device + 4 * subdivision) + '-' + str(8 * device + 4 * subdivision + 3),
-        './build/cudaFPW',
+        '../build/cudaFPW',
         str(field),
         str(ccd),
         str(quad),
