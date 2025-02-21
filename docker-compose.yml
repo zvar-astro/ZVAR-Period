@@ -1,0 +1,7 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tdulaz/zvar-fpw
+    restart: always

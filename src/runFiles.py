@@ -93,6 +93,10 @@ if __name__ == "__main__":
     files = glob.glob(f"{data_dir}/*.h5")
     # remove those that end in _results.h5
     files = [file for file in files if not file.endswith('_results.h5')]
+    files_completed = glob.glob(f"{data_dir}/*_results.h5")
+    # remove those that are already completed
+    files = [file for file in files if file.replace('.h5', '_results.h5') not in files_completed]
+    # for all the files,
     for file in files:
         task_queue.put(file)
     

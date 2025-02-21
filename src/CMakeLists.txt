@@ -47,10 +47,14 @@ target_link_libraries(cudaFPW PRIVATE ${CUDA_LIBRARIES} ${CUDA_curand_LIBRARY})
 target_link_libraries(cudaFPW PRIVATE ${HDF5_LIBRARIES})
 
 # Include Eigen headers
-include_directories("/data/dev/ZVAR-Period/data/eigen")
-include_directories("/data/dev/ZVAR-Period/data/Gpufit/Gpufit")
+include_directories($ENV{EIGEN3_INCLUDE_DIR})
+# Include Gpufit headers
+include_directories($ENV{GPUFIT_INCLUDE_DIR})
 
-target_link_libraries(cudaFPW PRIVATE /data/dev/ZVAR-Period/data/Gpufit-build/Gpufit/libGpufit.so)
+# Include the path to the Gpufit library that was built
+# target_link_libraries(cudaFPW PRIVATE /data/dev/ZVAR-Period/data/Gpufit-build/Gpufit/libGpufit.so)
+# instead use an environment variable
+target_link_libraries(cudaFPW PRIVATE $ENV{GPUFIT_LIB_DIR}/libGpufit.so)
 if(OpenMP_CXX_FOUND)
     target_compile_options(cudaFPW PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>)
     target_link_libraries(cudaFPW PRIVATE OpenMP::OpenMP_CXX)
