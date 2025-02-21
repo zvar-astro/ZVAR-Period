@@ -1,5 +1,5 @@
 services:
-  api:
+  fpw:
     build:
       context: .
       dockerfile: Dockerfile
