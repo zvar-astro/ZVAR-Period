@@ -75,7 +75,7 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
     unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
 
     //Decide how many GPU chunks to run based on memory
-    unsigned long N_freq_batch = 100000;
+    unsigned long N_freq_batch = 1000000;
     unsigned long N_curves_batch = calculateMaxGPUBatch(device, NEXP, N_freq_batch, N_samples, NSRC_PER_CHUNK);
 
     const int distance = 300;
@@ -165,20 +165,21 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
 
         float* flux_no_baseline = new float[NSRC_PER_CHUNK * NEXP];
 
-        // for (unsigned long k = 0; k < NCHUNK_BASELINE; k++) {
-        //     std::cout << "Removing baseline for chunk " << k << " of " << NCHUNK_BASELINE << std::endl;
-        //     unsigned long objstart_baseline = k * NSRC_PER_CHUNK_BASELINE;
-        //     unsigned long objnum_baseline = (k < NCHUNK_BASELINE - 1) ? NSRC_PER_CHUNK_BASELINE : (NSRC_PER_CHUNK - objstart_baseline);
+        for (unsigned long k = 0; k < NCHUNK_BASELINE; k++) {
+            std::cout << "Removing baseline for chunk " << k << " of " << NCHUNK_BASELINE << std::endl;
+            unsigned long objstart_baseline = k * NSRC_PER_CHUNK_BASELINE;
+            unsigned long objnum_baseline = (k < NCHUNK_BASELINE - 1) ? NSRC_PER_CHUNK_BASELINE : (NSRC_PER_CHUNK - objstart_baseline);
 
-        //     float* flux_no_baseline_chunk = removeBaseline(time.data(), flux.data() + objstart_baseline * NEXP, fluxErr.data() + objstart_baseline * NEXP, NEXP, objnum_baseline, 15);
-
-        //     for (unsigned long i = 0; i < objnum_baseline; i++) {
-        //         for (unsigned long j = 0; j < NEXP; j++) {
-        //             flux_no_baseline[(objstart_baseline + i) * NEXP + j] = flux_no_baseline_chunk[i * NEXP + j];
-        //         }
-        //     }
-        //     delete[] flux_no_baseline_chunk;
-        // }
+            float* flux_no_baseline_chunk = removeBaseline(time.data(), flux.data() + objstart_baseline * NEXP, fluxErr.data() + objstart_baseline * NEXP, NEXP, objnum_baseline, 15);
+            // std::cout << "removeBaseline returned" << std::endl;
+            for (unsigned long i = 0; i < objnum_baseline; i++) {
+                for (unsigned long j = 0; j < NEXP; j++) {
+                    flux_no_baseline[(objstart_baseline + i) * NEXP + j] = flux_no_baseline_chunk[i * NEXP + j];
+                }
+            }
+            // std::cout << "Copied flux_no_baseline_chunk to flux_no_baseline" << std::endl;
+            delete[] flux_no_baseline_chunk;
+        }
         // float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
         // float* flux_no_baseline = flux.data();
 
@@ -199,8 +200,8 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
         acquireSemaphore(semaphore);
 
         float* t_host = time.data();
-        // float* flux_host = flux_no_baseline;
-        float* flux_host = flux.data();
+        float* flux_host = flux_no_baseline;
+        // float* flux_host = flux.data();
         float* fluxErr_host = fluxErr.data();
         float* fgrid_host = fgrid.data();
         int N_data = static_cast<int>(NEXP);

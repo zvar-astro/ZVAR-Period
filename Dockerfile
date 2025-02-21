@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y wget && \
     dpkg -i cuda.deb && rm cuda.deb && \
     cp /var/cuda-repo-debian12-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/ && \
     apt-get update && apt-get install -y git build-essential cmake libboost-all-dev \
-    python3-dev libhdf5-serial-dev ${CUDA_APT_PACKAGE} && \
+    nano python3-dev libhdf5-serial-dev ${CUDA_APT_PACKAGE} && \
     sh /uv-installer.sh && rm /uv-installer.sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
     
