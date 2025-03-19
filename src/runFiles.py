@@ -9,9 +9,14 @@ import glob
 import signal
 from multiprocessing import Semaphore
 
+n_processes = int(os.environ.get('N_PROCESSES', 1))
+n_gpus = int(os.environ.get('N_GPUS', 1))
+# we want to assign up to 2 files to each GPU, so we make sure that the number of threads is at most 2 * n_gpus
+n_processes = min(n_processes, 2 * n_gpus)
+
 def create_semaphores():
-    semaphores = [Semaphore(1) for _ in range(4)]
-    semaphore_names = [f"/device_{i}_lock" for i in range(4)]
+    semaphores = [Semaphore(1) for _ in range(n_gpus)]
+    semaphore_names = [f"/device_{i}_lock" for i in range(n_gpus)]
     return semaphores, semaphore_names
 
 def cleanup_semaphores(semaphore_names):
@@ -36,12 +41,12 @@ def signal_handler(sig, frame, semaphore_names):
     cleanup_semaphores(semaphore_names)
     sys.exit(0)
 
-def run_cudaFPW(file_path, device, subdivision, stop_event):
+def run_cudaFPW(file_path, device, n_process, stop_event):
     command = [
         'taskset',
         '-c',
-        # str(9 * device) + '-' + str(9 * device + 8),
-        str(8 * device + 4 * subdivision) + '-' + str(8 * device + 4 * subdivision + 3),
+        # we take 4 threads per process
+        str(n_process * 4) + "-" + str((n_process + 1) * 4 - 1),
         '../build/cudaFPW',
         str(file_path),
         str(device)
@@ -64,7 +69,7 @@ def run_cudaFPW(file_path, device, subdivision, stop_event):
         print(f"An error occurred: {e}")
         stop_event.set()
 
-def worker(task_queue, device, subdivision, algorithm, stop_event):
+def worker(task_queue, device, n_process, algorithm, stop_event):
     while not task_queue.empty() and not stop_event.is_set():
         try:
             file_path = task_queue.get_nowait()
@@ -72,14 +77,14 @@ def worker(task_queue, device, subdivision, algorithm, stop_event):
             break
 
         if algorithm == 'fpw':
-            run_cudaFPW(file_path, device, subdivision, stop_event)
+            run_cudaFPW(file_path, device, n_process, stop_event)
         elif algorithm == 'schuster':
             raise NotImplementedError("Schuster algorithm is not implemented")
         task_queue.task_done()
 
 if __name__ == "__main__":
     data_dir = os.environ.get('DATA_DIR', '/data/lightcurves')
-    num_threads = os.environ.get('NUM_THREADS', 1)
+    output_dir = os.environ.get('OUTPUT_DIR', '/data/output')
     
     algorithm = 'fpw'
 
@@ -93,9 +98,12 @@ if __name__ == "__main__":
     files = glob.glob(f"{data_dir}/*.h5")
     # remove those that end in _results.h5
     files = [file for file in files if not file.endswith('_results.h5')]
-    files_completed = glob.glob(f"{data_dir}/*_results.h5")
-    # remove those that are already completed
-    files = [file for file in files if file.replace('.h5', '_results.h5') not in files_completed]
+    files_completed = glob.glob(f"{output_dir}/*_results.h5")
+    # remove those that are already in the output directory
+    files_completed = [file.split('/')[-1] for file in files_completed]
+    files = [file for file in files if file.split('/')[-1] not in files_completed]
+    files = sorted(files)
+    print(f"Found {len(files)} files to process.")
     # for all the files,
     for file in files:
         task_queue.put(file)
@@ -103,13 +111,15 @@ if __name__ == "__main__":
     threads = []
     stop_event = threading.Event()
 
-    # for i in range(num_threads):
-    i = 0
-    device = int(i) #There are four GPUs 0-3
-    subdivision = i % 2 #Each GPU should process two files at a time
-    thread = threading.Thread(target=worker, args=(task_queue, device, subdivision, algorithm, stop_event))
-    thread.start()
-    threads.append(thread)
+    for i in range(n_processes):
+        device = i % n_gpus
+        # subdivision = i // n_gpus  # Each GPU should process two files at a time
+        thread = threading.Thread(target=worker, args=(task_queue, device, i, algorithm, stop_event))
+        thread.start()
+        threads.append(thread)
+        # Give the thread a name for easier debugging
+        thread.name = f"Thread-{i}"
+        print(f"Started {thread.name} for device {device}")
 
     try:
         while not task_queue.empty():

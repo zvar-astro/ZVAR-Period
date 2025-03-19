@@ -13,16 +13,37 @@ size_t getHostMemory() {
 }
 
 unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t NEXP, size_t NSRC) {
+    // read the number of instances, the total cap percentage, and the chunk cap percentage
+    // from the environment variables
+    const char* instancesEnv = std::getenv("N_PROCESSES");
+    const char* totalCapEnv = std::getenv("TOTAL_CPU_CAP");
+    const char* chunkCapEnv = std::getenv("CHUNK_CPU_CAP");
+    unsigned long N_INSTANCES = instancesEnv ? std::stoul(instancesEnv) : 1; // Default to 1 if not set
+    double totalCap = totalCapEnv ? std::stod(totalCapEnv) : 0.95; // Default to 0.95 if not set
+    double chunkCap = chunkCapEnv ? std::stod(chunkCapEnv) : 0.95; // Default to 0.95 if not set
+
+    if (N_INSTANCES == 0) {
+        std::cerr << "Error: N_INSTANCES cannot be zero" << std::endl;
+        return 0;
+    }
+    if (totalCap <= 0 || totalCap > 1) {
+        std::cerr << "Error: TOTAL_CAP must be between 0 and 1" << std::endl;
+        return 0;
+    }
+    if (chunkCap <= 0 || chunkCap > 1) {
+        std::cerr << "Error: CHUNK_CAP must be between 0 and 1" << std::endl;
+        return 0;
+    }
     size_t hostMemory = getHostMemory(); // Obtain the total host memory
-    size_t allowedTotalMemory = static_cast<size_t>(0.9 * static_cast<double>(hostMemory)); // Cap TOTAL usage at 95% of total memory
-    size_t allowedInstanceMemory = allowedTotalMemory / 8; // Divide allowed memory by number of instances
+    size_t allowedTotalMemory = static_cast<size_t>(totalCap * static_cast<double>(hostMemory)); // Cap TOTAL usage at 95% of total memory
+    size_t allowedInstanceMemory = allowedTotalMemory / N_INSTANCES; // Divide allowed memory by number of instances
 
     // Decide how many CPU chunks to run based on memory
     size_t singleObjectPeriodogramMemory = N_freqs * N_samples * sizeof(float); // Memory for a single periodogram
     size_t singleObjectDataMemory = NEXP * 2 * sizeof(float); // Memory for a single object's data (flux and fluxErr)
     size_t singleObjectMetaDataMemory = sizeof(float) + sizeof(unsigned long) + 2 * sizeof(float); // Memory for a single object's metadata (ratioValid, psid, ra, dec)
     size_t singleObjectMemory = singleObjectPeriodogramMemory + singleObjectDataMemory + singleObjectMetaDataMemory; // Memory for a single object
-    size_t allowedChunkMemory = static_cast<size_t>(0.95 * static_cast<double>(allowedInstanceMemory)); // Cap CHUNK usage at 95% of instance memory to allow for overhead
+    size_t allowedChunkMemory = static_cast<size_t>(chunkCap * static_cast<double>(allowedInstanceMemory)); // Cap CHUNK usage at 95% of instance memory to allow for overhead
     size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
     unsigned long NCHUNK = 1 + NSRC / allowedSourcesMemory; // Number of chunks to run
 
@@ -57,8 +78,12 @@ unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_b
     size_t free_mem, total_mem_query;
     cudaMemGetInfo(&free_mem, &total_mem_query);
 
+    // read the total cap percentage from the environment variable
+    const char* gpuCapEnv = std::getenv("GPU_CAP");
+    double gpuCap = gpuCapEnv ? std::stod(gpuCapEnv) : 0.9; // Default to 0.7 if not set
+
     // Calculate available memory with safety margin
-    size_t available_memory = static_cast<size_t>(0.70 * static_cast<double>(free_mem));
+    size_t available_memory = static_cast<size_t>(gpuCap * static_cast<double>(free_mem));
 
     // Calculate memory usage for each array
     size_t t_memory = N_dat * float_size;
@@ -80,7 +105,7 @@ unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_b
     cudaGetDeviceProperties(&device_prop, deviceNum);
 
     // Define block size for cudaDeltaChi2Multibin
-    dim3 blockSizeChi(64, 8);
+    dim3 blockSizeChi(32, 8);
 
     // Calculate maximum grid size for cudaDeltaChi2Multibin
     size_t maxGridSizeY = device_prop.maxGridSize[1];
@@ -113,7 +138,25 @@ unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_b
     return max_N_curves_batch;
 }
 
-unsigned long calculateNChunkBaseline(int deviceNum, size_t NSRC_PER_CHUNK, size_t N_dat, size_t modelparams) {
+unsigned long calculateNChunkBaseline(int deviceNum, size_t NSRC_PER_CHUNK, size_t N_dat, int modelID) {
+    int N_parameters = 0;
+    switch (modelID) {
+        case 13: // Quadratic model
+            N_parameters = 3;
+            break;
+        case 14: // Cubic model
+            N_parameters = 4;
+            break;
+        case 15: // 7 degree model
+            N_parameters = 8;
+            break;
+        case 16: // 15 degree model
+            N_parameters = 16;
+            break;
+        default:
+            throw std::invalid_argument("Invalid model ID");
+            break;
+    }
     // Memory usage per element in bytes
     const size_t float_size = sizeof(float);
     const size_t int_size = sizeof(int);
@@ -135,7 +178,7 @@ unsigned long calculateNChunkBaseline(int deviceNum, size_t NSRC_PER_CHUNK, size
     size_t times_memory = N_dat * float_size;
     size_t y_memory = N_dat * NSRC_PER_CHUNK * float_size;
     size_t dy_memory = N_dat * NSRC_PER_CHUNK * float_size;
-    size_t parameters_memory = NSRC_PER_CHUNK * modelparams * float_size;
+    size_t parameters_memory = NSRC_PER_CHUNK * N_parameters * float_size;
     size_t states_memory = NSRC_PER_CHUNK * int_size;
     size_t chi_squares_memory = NSRC_PER_CHUNK * float_size;
     size_t n_iterations_memory = NSRC_PER_CHUNK * int_size;
@@ -158,5 +201,13 @@ unsigned long calculateNChunkBaseline(int deviceNum, size_t NSRC_PER_CHUNK, size
         NCHUNK_BASELINE = (N_dat + NSRC_PER_CHUNK - 1) / NSRC_PER_CHUNK;
     }
 
-    return 5 * NCHUNK_BASELINE;
+    NCHUNK_BASELINE = 5 * NCHUNK_BASELINE; // Increase the baseline by a factor of 5 to allow for overhead
+    
+    // Ensure that NCHUNK_BASELINE can't be > NSRC_PER_CHUNK
+    // As we couldn't possibly process more sources than we have in a chunk
+    if (NCHUNK_BASELINE > NSRC_PER_CHUNK) {
+        NCHUNK_BASELINE = NSRC_PER_CHUNK;
+    }
+
+    return NCHUNK_BASELINE;
 }

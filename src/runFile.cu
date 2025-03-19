@@ -74,9 +74,27 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
     unsigned long NCHUNK = calculateMaxCPUBatch(N_freqs, N_samples, NEXP, NSRC);
     unsigned long NSRC_PER_CHUNK = 1 + ((NSRC-1) / NCHUNK);
 
-    //Decide how many GPU chunks to run based on memory
-    unsigned long N_freq_batch = 1000000;
+    // Decide how many GPU chunks to run based on memory
+    const char* N_freq_batch_env = std::getenv("N_FREQ_BATCH");
+    unsigned long N_freq_batch = (N_freq_batch_env != nullptr) ? std::stoul(N_freq_batch_env) : 100000;
+    if (N_freq_batch == 0) {
+        std::cerr << "Error: N_FREQ_BATCH cannot be zero" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (N_freq_batch > N_freqs) {
+        // make it match the size of the frequency grid
+        std::cerr << "Warning: N_FREQ_BATCH is larger than the size of the frequency grid, setting it to " << N_freqs << std::endl;
+        N_freq_batch = N_freqs;
+    }
     unsigned long N_curves_batch = calculateMaxGPUBatch(device, NEXP, N_freq_batch, N_samples, NSRC_PER_CHUNK);
+
+    if (N_curves_batch == 0) {
+        std::cerr << "Error: N_curves_batch is zero, exiting" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    std::cout << "N_freq_batch: " << N_freq_batch << std::endl;
+    std::cout << "N_curves_batch: " << N_curves_batch << std::endl;
 
     const int distance = 300;
     const float threshold = 7.0f;
@@ -94,18 +112,22 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
     // float* medians = new float[NSRC_PER_CHUNK];
     // float* mads = new float[NSRC_PER_CHUNK];
 
-    //Create output file
-    // string results_filename = writeOutputFilePath(field, ccd, quad, filter);
-    // make the results_filename as the hdf_filename with the .h5 replaced with _results.h5
-    string results_filename = hdf_filename;
-    results_filename.replace(results_filename.end()-3, results_filename.end(), "_results.h5");
+    // Create output file, in OUTPUT_DIR if it exists, otherwise in /data/zvar/output
+    const char* outputDirEnv = std::getenv("OUTPUT_DIR");
+    std::string outputDir = outputDirEnv ? std::string(outputDirEnv) : "/data/output";
+    std::string mkdir = "mkdir -p " + outputDir;
+    system(mkdir.c_str());
+    std::string hdf_filename_copy = hdf_filename;
+    std::string::size_type pos = hdf_filename_copy.find_last_of("/");
+    if (pos != std::string::npos) {
+        hdf_filename_copy = hdf_filename_copy.substr(pos + 1);
+    }
+    std::string results_filename = outputDir + "/" + hdf_filename_copy + "_results.h5.temp";
     writeResults(results_filename, NSRC, N_samples, N_peaks);
 
     auto stop_preprocess = chrono::high_resolution_clock::now();
     auto duration_preprocess = chrono::duration_cast<chrono::milliseconds>(stop_preprocess - start_preprocess);
     logMessage(logpath, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
-
-    logMessage(logpath, "Loading in flux values over " + to_string(NCHUNK) + " chunks with " + to_string(NEXP) + " exposures per source");
 
     // If there are no exposures, skip the file
     if (NEXP == 0) {
@@ -126,12 +148,15 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
         return;
     }
 
+    // print how many sources we have in total, how many chunks we will run, how many sources per chunk
+    // and how many exposures per source
+    logMessage(logpath, "Total sources: " + to_string(NSRC) + ", Total chunks: " + to_string(NCHUNK) + ", Sources per chunk: " + to_string(NSRC_PER_CHUNK) + ", Exposures per source: " + to_string(NEXP));
+
     for (unsigned long k = 0; k < NCHUNK; k++) {
         auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
         // Get the range of objects to analyze
         objstart = k * NSRC_PER_CHUNK;
         unsigned long objnum = (k < NCHUNK - 1) ? NSRC_PER_CHUNK : (NSRC - objstart);
-        logMessage(logpath, "Chunk " + to_string(k+1) + "/" + to_string(NCHUNK) + ": Starting at source " + to_string(objstart) + ", loading in " + to_string(objnum) + " sources");
 
         // Load the flux values
         status = get_sourcedata_chunk(hdf_filename, flux.data(), fluxErr.data(), ratioValid.data(), dd_indices, objstart, objnum, NEXP);
@@ -139,6 +164,7 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
 
         // Load the psids
         status = get_sources_chunk(hdf_filename, psids.data(), ra.data(), dec.data(), objstart, objnum);
+        check_status(status);
 
         //Check for any nans in the flux values
         for (unsigned long i = 0; i < objnum; i++) {
@@ -158,30 +184,26 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
         //Utilize a semaphore to prevent multiple threads from accessing the GPU at the same time
         acquireSemaphore(semaphore);
 
+        logMessage(logpath, "Semaphore acquired for baseline removal in chunk: " + to_string(k));
+
         // Remove baseline from flux values
-        // unsigned long NCHUNK_BASELINE = 5;
-        unsigned long NCHUNK_BASELINE = calculateNChunkBaseline(device, NSRC_PER_CHUNK, NEXP, 8);
+        unsigned long NCHUNK_BASELINE = calculateNChunkBaseline(device, NSRC_PER_CHUNK, NEXP, 15);
         unsigned long NSRC_PER_CHUNK_BASELINE = 1 + ((NSRC_PER_CHUNK-1) / NCHUNK_BASELINE);
 
         float* flux_no_baseline = new float[NSRC_PER_CHUNK * NEXP];
 
-        for (unsigned long k = 0; k < NCHUNK_BASELINE; k++) {
-            std::cout << "Removing baseline for chunk " << k << " of " << NCHUNK_BASELINE << std::endl;
-            unsigned long objstart_baseline = k * NSRC_PER_CHUNK_BASELINE;
-            unsigned long objnum_baseline = (k < NCHUNK_BASELINE - 1) ? NSRC_PER_CHUNK_BASELINE : (NSRC_PER_CHUNK - objstart_baseline);
+        for (unsigned long l = 0; l < NCHUNK_BASELINE; l++) {
+            unsigned long objstart_baseline = l * NSRC_PER_CHUNK_BASELINE;
+            unsigned long objnum_baseline = (l < NCHUNK_BASELINE - 1) ? NSRC_PER_CHUNK_BASELINE : (NSRC_PER_CHUNK - objstart_baseline);
 
             float* flux_no_baseline_chunk = removeBaseline(time.data(), flux.data() + objstart_baseline * NEXP, fluxErr.data() + objstart_baseline * NEXP, NEXP, objnum_baseline, 15);
-            // std::cout << "removeBaseline returned" << std::endl;
             for (unsigned long i = 0; i < objnum_baseline; i++) {
                 for (unsigned long j = 0; j < NEXP; j++) {
                     flux_no_baseline[(objstart_baseline + i) * NEXP + j] = flux_no_baseline_chunk[i * NEXP + j];
                 }
             }
-            // std::cout << "Copied flux_no_baseline_chunk to flux_no_baseline" << std::endl;
             delete[] flux_no_baseline_chunk;
         }
-        // float* flux_no_baseline = removeBaseline(time.data(), flux.data(), fluxErr.data(), NEXP, NSRC_PER_CHUNK, 15);
-        // float* flux_no_baseline = flux.data();
 
         cudaError_t cudaStatus = cudaDeviceSynchronize();
         if (cudaStatus != cudaSuccess) {
@@ -198,10 +220,10 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
         auto start_periodogram = chrono::high_resolution_clock::now(); // Time running periodogram
         //Open the semaphore for the periodogram
         acquireSemaphore(semaphore);
+        logMessage(logpath, "Semaphore acquired for periodogram computation in chunk: " + to_string(k));
 
         float* t_host = time.data();
         float* flux_host = flux_no_baseline;
-        // float* flux_host = flux.data();
         float* fluxErr_host = fluxErr.data();
         float* fgrid_host = fgrid.data();
         int N_data = static_cast<int>(NEXP);
@@ -210,12 +232,10 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
         // Periodograms are stored light curve contiguous and then sample contiguous. I.E. [curve1_Nbins1, curve1_Nbins2, ...]
         vector<float> periodograms = cudaRunFPW(t_host, flux_host, fluxErr_host, fgrid_host, N_data, N_curves, N_freqs, N_bins, N_freq_batch, N_curves_batch, N_samples);
 
-        // std::cout << "Semaphore releasing for periodogram computation in quadrant: " << quad << " chunk: " << k << std::endl;
         releaseSemaphore(semaphore);
         auto stop_periodogram = chrono::high_resolution_clock::now();
         auto duration_periodogram = chrono::duration_cast<chrono::milliseconds>(stop_periodogram - start_periodogram);
-        logMessage(logpath, "Time to run periodogram: " + to_string(duration_periodogram.count()) + " milliseconds");
-        logMessage(logpath, "Time per light curve: " + to_string(duration_periodogram.count() / objnum) + " milliseconds");
+        logMessage(logpath, "Time to run periodogram: " + to_string(duration_periodogram.count()) + " ms (per light curve: " + to_string(duration_periodogram.count() / objnum) + " ms)");
 
         // Find the most significant peaks
         auto start_postprocess = chrono::high_resolution_clock::now(); // Time computing post-process
@@ -292,10 +312,17 @@ void runFile(std::string hdf_filename, int device, std::string logpath) {
     auto stop_full = chrono::high_resolution_clock::now();
     auto duration_full = chrono::duration_cast<chrono::seconds>(stop_full - start_full);
     logMessage(logpath, "Time for full run: " + to_string(duration_full.count()) + " seconds");
-    // cout << "matchfile " << field << " " << ccd << " " << quad << " " << filter 
-    //       << " finished in " << duration_full.count() << " seconds" << endl;
     cout << "matchfile " << hdf_filename << " finished in " << duration_full.count() << " seconds" << endl;
 
-    // print where the data was written
-    logMessage(logpath, "Results written to: " + results_filename);
+    // rename the results file to remove the .temp extension
+    string final_results_filename = results_filename;
+    // remove the last 5 characters (.temp) from the filename
+    final_results_filename = final_results_filename.substr(0, final_results_filename.size() - 5);
+    string rename_command = "mv " + results_filename + " " + final_results_filename;
+    int rename_status = system(rename_command.c_str());
+    if (rename_status != 0) {
+        logMessage(logpath, "Error renaming results file: " + std::to_string(rename_status));
+    } else {
+        logMessage(logpath, "Results written to: " + final_results_filename);
+    }
 }

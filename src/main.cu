@@ -4,9 +4,25 @@
 #include <string>
 #include <cstdlib> // For atoi
 #include <chrono>  // For timing
+#include <stdexcept>
+#include <execinfo.h>
 
 using namespace std;
 using namespace std::chrono;
+
+// Function to handle errors and print stack trace
+void handler() {
+    void *trace_elems[20];
+    int trace_elem_count(backtrace( trace_elems, 20 ));
+    char **stack_syms(backtrace_symbols( trace_elems, trace_elem_count ));
+    for ( int i = 0 ; i < trace_elem_count ; ++i )
+    {
+        std::cout << stack_syms[i] << "\n";
+    }
+    free( stack_syms );
+
+    exit(1);
+}  
 
 int main(int argc, char* argv[]) {
     // Check if the correct number of arguments is provided
@@ -14,6 +30,8 @@ int main(int argc, char* argv[]) {
         cerr << "Usage: " << argv[0] << " <path_to_matchfile> <device>" << endl;
         return 1;
     }
+
+    std::set_terminate(handler);
 
     // Parse command-line arguments
     string hdf_filename = argv[1];
