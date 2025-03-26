@@ -1,5 +1,254 @@
-# ZVAR-Period
+# Installation Guide
 
-The code base for running FPW and Schuster periodicity searches on forced photometry 
-light curves (see [ZVAR-Forced-Phot](https://github.com/zvar-astro/ZVAR-Forced-Phot)) 
-for the ZVAR project.
+## Without Docker
+
+Here's a detailed guide for installing and setting up `ZVAR-Period` on a Linux system (without Docker, see the next section if you wish to use it).
+
+### Prerequisites
+
+- Linux distribution (Debian-based, Red Hat-based, or other)
+- Administrator (sudo) privileges
+- Internet connection for downloading packages
+- Compatible NVIDIA GPU with appropriate drivers installed
+
+### Step 1: Install System Dependencies
+
+For Debian-based distributions (Ubuntu, Debian, etc.):
+```bash
+# Update package lists
+sudo apt-get update
+
+# Install essential build tools and dependencies
+sudo apt-get install -y git build-essential cmake libboost-all-dev nano python3-dev libhdf5-serial-dev wget
+```
+
+For Red Hat-based distributions (CentOS, Fedora, RHEL, etc.):
+```bash
+# Install essential build tools and dependencies
+sudo dnf install -y git cmake gcc-c++ boost-devel nano python3-devel hdf5-devel wget
+```
+
+### Step 2: Install CUDA Toolkit
+
+#### Option 1: Package Manager Installation
+
+For Debian-based systems:
+```bash
+# Install CUDA toolkit from package manager
+sudo apt-get install -y nvidia-cuda-toolkit
+```
+
+For Red Hat-based systems:
+```bash
+# Enable EPEL repository
+sudo dnf install -y epel-release
+
+# Install CUDA toolkit
+sudo dnf install -y cuda
+```
+
+After installing via package manager, locate your CUDA installation:
+```bash
+# Find CUDA installation
+which nvcc
+# Usually at /usr/bin/nvcc or /usr/local/cuda/bin/nvcc
+```
+
+#### Option 2: Manual Installation
+
+First, check your NVIDIA driver version to determine which CUDA version to install:
+```bash
+nvidia-smi
+```
+
+Once you know your driver version, check the CUDA compatibility table on NVIDIA's website to ensure CUDA 12.6 is compatible with your driver. If not, choose a compatible version.
+
+For Debian-based systems:
+```bash
+# Download CUDA repository package (adjust URL based on your distribution and compatible CUDA version)
+wget https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda-repo-debian12-12-6-local_12.6.0-560.28.03-1_amd64.deb -O cuda.deb
+
+# Install repository package
+sudo dpkg -i cuda.deb
+
+# Copy CUDA keyring
+sudo cp /var/cuda-repo-debian12-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/
+
+# Update package lists again
+sudo apt-get update
+
+# Install CUDA toolkit
+sudo apt-get install -y cuda-toolkit-12-6
+
+# Clean up
+rm cuda.deb
+```
+
+For Red Hat-based systems:
+```bash
+# Download CUDA repository package (adjust URL based on your distribution and compatible CUDA version)
+wget https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda-repo-rhel8-12-6-local-12.6.0-560.28.03-1.x86_64.rpm -O cuda.rpm
+
+# Install repository package
+sudo rpm -i cuda.rpm
+
+# Install CUDA toolkit
+sudo dnf install -y cuda-toolkit-12-6
+
+# Clean up
+rm cuda.rpm
+```
+
+### Step 3: Install a Python Virtual Environment Manager
+
+For this guide, we will use `uv` as the virtual environment manager. You can also use any other manager like `venv`, `virtualenv`, or `conda`.
+
+```bash
+# Download and install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Step 4: Clone Repository and Set Up Directory Structure
+
+```bash
+# Create application directory, wherever you want to put it, for this example we will use /app
+# You can - and should - change this to your preferred location
+mkdir -p /app
+cd /app
+
+# Clone your project repository (replace with your actual repository URL)
+git clone https://github.com/zvar-astro/ZVAR-Period.git .
+
+# Create packages directory if it doesn't exist
+mkdir -p packages
+cd packages
+
+# Clone required repositories
+git clone https://gitlab.com/libeigen/eigen.git
+git clone https://github.com/gpufit/Gpufit.git
+mkdir Gpufit-build
+```
+
+### Step 5: Set Up Environment Variables
+
+FPW needs to know about your hardware limitations in order to avoid using more memory than available. Also, we need to tell it where to find different packages required at compile time. This is done by setting up environment variables. 
+
+Add these lines to your `~/.bashrc` or `~/.bash_profile` (adjust CUDA path based on your installation method):
+
+```bash
+# For manual CUDA installation:
+export PATH="$HOME/.local/bin/:/usr/local/cuda/bin:$PATH"
+
+# For package manager CUDA installation, adjust based on your 'which nvcc' result
+# export PATH="$HOME/.local/bin/:/usr/bin:$PATH"
+
+# To compile FPW and it's dependencies
+# You may need to adjust these paths based on your CUDA installation, and where you've cloned the repositories
+export EIGEN3_INCLUDE_DIR="/app/packages/eigen"
+export GPUFIT_INCLUDE_DIR="/app/packages/Gpufit/Gpufit"
+export GPUFIT_LIB_DIR="/app/packages/Gpufit-build/Gpufit"
+
+# To run FPW (you can also just specify those later at run time, rather then setting them here)
+# You'll have to adjust these values based on your hardware, but here are some reasonable defaults:
+export N_PROCESSES=1 # Number of processes to run in parallel
+export N_GPUS=1 # Number of GPUs to use
+export TOTAL_CPU_CAP=0.8 # Memory usage cap for all processes
+export CHUNK_CPU_CAP=0.8 # Memory usage cap for a single chunk of lightcurves
+export GPU_CAP=0.9 # GPU memory usage cap
+export N_FREQ_BATCH=50000 # Number of frequencies to process in a single batch
+```
+
+Apply the changes:
+
+```bash
+source ~/.bashrc
+```
+
+### Step 6: Set Up Python Virtual Environment
+
+```bash
+# Return to application directory
+cd /app
+
+# Create Python virtual environment
+uv venv --python=python3.10
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Install basic Python packages
+uv pip install setuptools numpy
+```
+
+### Step 7: Patch Gpufit with Custom Models
+
+We need custom models that aren't included in Gpufit by default. These models are used for fitting the light curves
+to do some baseline removal. They are location in the `extensions/Gpufit/models` directory of this repository.
+
+```bash
+# Copy custom model files from your repo to Gpufit directory
+cp /app/extensions/Gpufit/models/cubic_1d.cuh /app/packages/Gpufit/Gpufit/models/
+cp /app/extensions/Gpufit/models/polynomial_7degree_1d.cuh /app/packages/Gpufit/Gpufit/models/
+cp /app/extensions/Gpufit/models/polynomial_15degree_1d.cuh /app/packages/Gpufit/Gpufit/models/
+cp /app/extensions/Gpufit/models/quadratic_1d.cuh /app/packages/Gpufit/Gpufit/models/
+cp /app/extensions/Gpufit/models/models.cuh /app/packages/Gpufit/Gpufit/models/
+
+# Copy constants header
+cp /app/extensions/Gpufit/constants.h /app/packages/Gpufit/Gpufit/
+```
+
+### Step 8: Build Gpufit
+
+```bash
+# Activate virtual environment if not already active
+source /app/.venv/bin/activate
+
+# Navigate to Gpufit build directory
+cd /app/packages/Gpufit-build
+
+# Configure with CMake
+cmake ../Gpufit
+
+# Build
+make
+```
+
+### Step 9: Building FPW
+
+```bash
+# Activate virtual environment if not already active
+source /app/.venv/bin/activate
+
+# Create build directory
+mkdir -p /app/build
+cd /app/build
+
+# Configure with CMake
+cmake ../src
+
+# Build
+make
+```
+
+### Step 10: Run the Application
+
+```bash
+# Activate virtual environment if not already active
+source /app/.venv/bin/activate
+
+# Run the main application
+cd /app/src
+python -u runFiles.py
+```
+
+### Important Notes
+- The version of CUDA installed should match your NVIDIA driver capabilities. Check compatibility at NVIDIA's CUDA documentation site
+- CUDA installations via package managers may place files in different locations than manual installations
+- If using the package manager version of CUDA, you may need to adjust CMake paths accordingly
+- You may need to adjust the `/app` directory path to your preferred location
+- The repository URL in Step 5 needs to be replaced with your actual repository URL
+- All necessary files are assumed to be part of your Git repository
+
+### Troubleshooting
+- If building Gpufit fails with CUDA errors, verify your CUDA installation with `nvcc --version`
+- For package manager CUDA installations, you may need to specify the CUDA path explicitly during CMake configuration: `cmake -DCUDA_TOOLKIT_ROOT_DIR=/path/to/cuda ../Gpufit`

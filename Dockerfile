@@ -53,7 +53,7 @@ RUN source .venv/bin/activate && \
     make
 
 # # RUN FPW on all the files
-# CMD ["bash", "-c", "source .venv/bin/activate && cd src && uv run python runFiles.py"]
+CMD ["bash", "-c", "source .venv/bin/activate && cd src && python -u runFiles.py"]
 
 # Keep the container running
-CMD ["bash", "-c", "tail -f /dev/null"]
+# CMD ["bash", "-c", "tail -f /dev/null"]
