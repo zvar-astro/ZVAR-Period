@@ -123,7 +123,7 @@ void process(std::string hdf_filename, int device, std::string logpath) {
         hdf_filename_copy = hdf_filename_copy.substr(pos + 1);
     }
     std::string results_filename = outputDir + "/" + hdf_filename_copy + "_results.h5.temp";
-    writeResults(results_filename, NSRC, N_samples, N_peaks);
+    createResults(results_filename, NSRC, N_samples, N_peaks);
 
     auto stop_preprocess = chrono::high_resolution_clock::now();
     auto duration_preprocess = chrono::duration_cast<chrono::milliseconds>(stop_preprocess - start_preprocess);
