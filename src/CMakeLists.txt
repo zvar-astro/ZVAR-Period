@@ -33,7 +33,7 @@ add_executable(cudaFPW main.cu
                msc/diagnostics.cpp
                msc/semaphores.cpp
                msc/memory_managers.cu
-               runFile.cu
+               processing.cu
                )
 
 # Specify the CUDA standard

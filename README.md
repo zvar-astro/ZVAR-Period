@@ -111,13 +111,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Step 4: Clone Repository and Set Up Directory Structure
 
 ```bash
-# Create application directory, wherever you want to put it, for this example we will use /app
-# You can - and should - change this to your preferred location
-mkdir -p /app
-cd /app
-
-# Clone your project repository (replace with your actual repository URL)
-git clone https://github.com/zvar-astro/ZVAR-Period.git .
+# first don't forget to cd to the directory where you want to install the application
+# Then clone your project repository (replace with your actual repository URL)
+git clone https://github.com/zvar-astro/ZVAR-Period.git
 
 # Create packages directory if it doesn't exist
 mkdir -p packages
@@ -142,11 +138,15 @@ export PATH="$HOME/.local/bin/:/usr/local/cuda/bin:$PATH"
 # For package manager CUDA installation, adjust based on your 'which nvcc' result
 # export PATH="$HOME/.local/bin/:/usr/bin:$PATH"
 
+# to not require you to edit all the different paths we'll have to define
+# let's set the path to the application once
+export ZVAR_PERIOD_PATH="path_to_ZVAR-Period_on_your_system" # EDIT THIS LINE
+
 # To compile FPW and it's dependencies
 # You may need to adjust these paths based on your CUDA installation, and where you've cloned the repositories
-export EIGEN3_INCLUDE_DIR="/app/packages/eigen"
-export GPUFIT_INCLUDE_DIR="/app/packages/Gpufit/Gpufit"
-export GPUFIT_LIB_DIR="/app/packages/Gpufit-build/Gpufit"
+export EIGEN3_INCLUDE_DIR="${ZVAR_PERIOD_PATH}/packages/eigen"
+export GPUFIT_INCLUDE_DIR="${ZVAR_PERIOD_PATH}/packages/Gpufit/Gpufit"
+export GPUFIT_LIB_DIR="${ZVAR_PERIOD_PATH}/packages/Gpufit-build/Gpufit"
 
 # To run FPW (you can also just specify those later at run time, rather then setting them here)
 # You'll have to adjust these values based on your hardware, but here are some reasonable defaults:
@@ -156,6 +156,12 @@ export TOTAL_CPU_CAP=0.8 # Memory usage cap for all processes
 export CHUNK_CPU_CAP=0.8 # Memory usage cap for a single chunk of lightcurves
 export GPU_CAP=0.9 # GPU memory usage cap
 export N_FREQ_BATCH=50000 # Number of frequencies to process in a single batch
+
+# Last but not least, we specify where our input data is located, and where the output data should go
+# and where the binaries we've built are found
+export DATA_DIR="${ZVAR_PERIOD_PATH}/data" # EDIT THIS LINE
+export OUTPUT_DIR="${ZVAR_PERIOD_PATH}/output" # EDIT THIS LINE
+export BINARIES_LOCATION="${ZVAR_PERIOD_PATH}/build" # EDIT THIS LINE
 ```
 
 Apply the changes:
@@ -167,8 +173,7 @@ source ~/.bashrc
 ### Step 6: Set Up Python Virtual Environment
 
 ```bash
-# Return to application directory
-cd /app
+# Make sure you are in the main application directory (ZVAR-Period)
 
 # Create Python virtual environment
 uv venv --python=python3.10
@@ -187,24 +192,24 @@ to do some baseline removal. They are location in the `extensions/Gpufit/models`
 
 ```bash
 # Copy custom model files from your repo to Gpufit directory
-cp /app/extensions/Gpufit/models/cubic_1d.cuh /app/packages/Gpufit/Gpufit/models/
-cp /app/extensions/Gpufit/models/polynomial_7degree_1d.cuh /app/packages/Gpufit/Gpufit/models/
-cp /app/extensions/Gpufit/models/polynomial_15degree_1d.cuh /app/packages/Gpufit/Gpufit/models/
-cp /app/extensions/Gpufit/models/quadratic_1d.cuh /app/packages/Gpufit/Gpufit/models/
-cp /app/extensions/Gpufit/models/models.cuh /app/packages/Gpufit/Gpufit/models/
+cp extensions/Gpufit/models/cubic_1d.cuh packages/Gpufit/Gpufit/models/
+cp extensions/Gpufit/models/polynomial_7degree_1d.cuh packages/Gpufit/Gpufit/models/
+cp extensions/Gpufit/models/polynomial_15degree_1d.cuh packages/Gpufit/Gpufit/models/
+cp extensions/Gpufit/models/quadratic_1d.cuh packages/Gpufit/Gpufit/models/
+cp extensions/Gpufit/models/models.cuh packages/Gpufit/Gpufit/models/
 
 # Copy constants header
-cp /app/extensions/Gpufit/constants.h /app/packages/Gpufit/Gpufit/
+cp extensions/Gpufit/constants.h packages/Gpufit/Gpufit/
 ```
 
 ### Step 8: Build Gpufit
 
 ```bash
 # Activate virtual environment if not already active
-source /app/.venv/bin/activate
+source .venv/bin/activate
 
 # Navigate to Gpufit build directory
-cd /app/packages/Gpufit-build
+cd packages/Gpufit-build
 
 # Configure with CMake
 cmake ../Gpufit
@@ -215,13 +220,21 @@ make
 
 ### Step 9: Building FPW
 
+Let's first go back to the main application directory and build the main application.
+```bash
+# Return to application directory
+cd ../..
+```
+
+Then we will build the main application:
+
 ```bash
 # Activate virtual environment if not already active
-source /app/.venv/bin/activate
+    source .venv/bin/activate
 
 # Create build directory
-mkdir -p /app/build
-cd /app/build
+mkdir -p build
+cd build
 
 # Configure with CMake
 cmake ../src
@@ -234,18 +247,16 @@ make
 
 ```bash
 # Activate virtual environment if not already active
-source /app/.venv/bin/activate
+source .venv/bin/activate
 
 # Run the main application
-cd /app/src
-python -u runFiles.py
+python -u scripts/runFiles.py
 ```
 
 ### Important Notes
 - The version of CUDA installed should match your NVIDIA driver capabilities. Check compatibility at NVIDIA's CUDA documentation site
 - CUDA installations via package managers may place files in different locations than manual installations
 - If using the package manager version of CUDA, you may need to adjust CMake paths accordingly
-- You may need to adjust the `/app` directory path to your preferred location
 - The repository URL in Step 5 needs to be replaced with your actual repository URL
 - All necessary files are assumed to be part of your Git repository
 

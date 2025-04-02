@@ -1,4 +1,4 @@
-#include "runFile.cuh"
+#include "processing.cuh"
 
 void checkCudaError(cudaError_t err, const char* msg) {
     if (err != cudaSuccess) {
@@ -16,11 +16,11 @@ void checkCudaError(cudaError_t err, const char* msg) {
  * @param logpath The path to the log file
  * 
  */
-void runFile(std::string hdf_filename, int device, std::string logpath) {
+void process(std::string hdf_filename, int device, std::string logpath) {
 
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
-        std::cerr << "unexpected CUDA error (runFile): " << cudaGetErrorString(error) << std::endl;
+        std::cerr << "unexpected CUDA error (process): " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
 

@@ -1,6 +1,7 @@
 #Delegates the running of every file in a directory.
 import subprocess
 import threading
+import time
 import queue
 import sys
 import time
@@ -9,10 +10,8 @@ import glob
 import signal
 from multiprocessing import Semaphore
 
-n_processes = int(os.environ.get('N_PROCESSES', 1))
-n_gpus = int(os.environ.get('N_GPUS', 1))
-# we want to assign up to 2 files to each GPU, so we make sure that the number of threads is at most 2 * n_gpus
-n_processes = min(n_processes, 2 * n_gpus)
+n_processes = 1
+n_gpus = 1
 
 def create_semaphores():
     semaphores = [Semaphore(1) for _ in range(n_gpus)]
@@ -93,16 +92,15 @@ if __name__ == "__main__":
     # time.sleep(60)  # Give some time for the semaphores to be created
     
     task_queue = queue.Queue()
+
+    # remove the file in the output directory that contains "benchmark"
+    try:
+        os.unlink(os.path.join(output_dir, 'benchmark_results.h5'))
+    except FileNotFoundError:
+        pass
     
-    # bands = [band] if band else ['g', 'r']
-    files = glob.glob(f"{data_dir}/*.h5")
-    # remove those that end in _results.h5
-    files = [file for file in files if not file.endswith('_results.h5')]
-    files_completed = glob.glob(f"{output_dir}/*_results.h5")
-    # remove those that are already in the output directory
-    files_completed = [file.split('/')[-1] for file in files_completed]
-    files = [file for file in files if file.split('/')[-1] not in files_completed]
-    files = sorted(files)
+    # we only want the file called benchmark.h5
+    files = glob.glob(os.path.join(data_dir, 'benchmark.h5'))
     print(f"Found {len(files)} files to process.")
     # for all the files,
     for file in files:
@@ -111,15 +109,14 @@ if __name__ == "__main__":
     threads = []
     stop_event = threading.Event()
 
-    for i in range(n_processes):
-        device = i % n_gpus
-        # subdivision = i // n_gpus  # Each GPU should process two files at a time
-        thread = threading.Thread(target=worker, args=(task_queue, device, i, algorithm, stop_event))
-        thread.start()
-        threads.append(thread)
-        # Give the thread a name for easier debugging
-        thread.name = f"Thread-{i}"
-        print(f"Started {thread.name} for device {device}")
+    start = time.time()
+
+    device = 0
+    thread = threading.Thread(target=worker, args=(task_queue, device, 0, algorithm, stop_event))
+    thread.start()
+    threads.append(thread)
+    thread.name = f"Thread-{0}"
+    print(f"Started {thread.name} for device {device}")
 
     try:
         while not task_queue.empty():
@@ -148,4 +145,6 @@ if __name__ == "__main__":
     else:
         cleanup_semaphores(semaphore_names)
         print("All files completed successfully.")
-        sys.exit(0)
+
+    end = time.time()
+    print(f"Total time taken: {end - start} seconds")

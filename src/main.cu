@@ -1,4 +1,4 @@
-#include "runFile.cuh"
+#include "processing.cuh"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Run the file with the provided arguments
-    runFile(hdf_filename, device, logpath);
+    process(hdf_filename, device, logpath);
 
     return 0;
 }
