@@ -76,15 +76,6 @@ int get_sourcedata_chunk(
     unsigned long                 // numentry
 );
 
-// Function to calculate median of flux values
-float calcMedian(std::vector<float> &, size_t);
-
-// Function to calculate deviations b/t flux values and median
-void calcDeviations(float *, float *, float, size_t);
-
-// Function to normalize flux values
-void normalizeLC(float *, int, int);
-
 // Function to create a new HDF5 file to store periodogram results
 void createResults(std::string, int, int, int);
 

@@ -230,7 +230,7 @@ Then we will build the main application:
 
 ```bash
 # Activate virtual environment if not already active
-    source .venv/bin/activate
+source .venv/bin/activate
 
 # Create build directory
 mkdir -p build

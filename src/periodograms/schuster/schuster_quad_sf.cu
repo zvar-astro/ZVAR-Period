@@ -20,6 +20,7 @@
 #include "hdf5.h"
 #include "../../readwrite/hdf5_utils.h"
 #include "../../statistics/peak_utils.h"
+#include "../../statistics/stats.h"
 #include "utils.h"
 #include "kernels.h"
 

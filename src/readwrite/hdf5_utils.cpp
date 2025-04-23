@@ -9,6 +9,8 @@
 #include <cmath>
 #include <algorithm>
 #include <numeric>
+#include <memory>
+#include <functional>
 #include "hdf5.h"
 #include "hdf5_utils.h"
 
@@ -25,6 +27,82 @@ void check_status(int status)
   assert(status == 0);
 }
 
+// RAII Wrapper classes for HDF5 resources
+
+class H5Handle {
+protected:
+    hid_t id_;
+public:
+    explicit H5Handle(hid_t id) : id_(id) {}
+    bool valid() const { return id_ >= 0; }
+    hid_t id() const { return id_; }
+    
+    // Prevent copying
+    H5Handle(const H5Handle&) = delete;
+    H5Handle& operator=(const H5Handle&) = delete;
+    
+    // Allow moving
+    H5Handle(H5Handle&& other) noexcept : id_(other.id_) {
+        other.id_ = -1;
+    }
+    
+    H5Handle& operator=(H5Handle&& other) noexcept {
+        if (this != &other) {
+            id_ = other.id_;
+            other.id_ = -1;
+        }
+        return *this;
+    }
+};
+
+class H5FileHandle : public H5Handle {
+public:
+    explicit H5FileHandle(const std::string& filename, unsigned flags = H5F_ACC_RDONLY)
+        : H5Handle(H5Fopen(filename.c_str(), flags, H5P_DEFAULT)) {}
+    ~H5FileHandle() { if (valid()) H5Fclose(id_); }
+};
+
+class H5GroupHandle : public H5Handle {
+public:
+    H5GroupHandle(const H5Handle& parent, const std::string& name)
+        : H5Handle(H5Gopen2(parent.id(), name.c_str(), H5P_DEFAULT)) {}
+    ~H5GroupHandle() { if (valid()) H5Gclose(id_); }
+};
+
+class H5DatasetHandle : public H5Handle {
+public:
+    H5DatasetHandle(const H5Handle& parent, const std::string& name)
+        : H5Handle(H5Dopen2(parent.id(), name.c_str(), H5P_DEFAULT)) {}
+    ~H5DatasetHandle() { if (valid()) H5Dclose(id_); }
+};
+
+class H5DataspaceHandle : public H5Handle {
+public:
+    explicit H5DataspaceHandle(const H5DatasetHandle& dataset)
+        : H5Handle(H5Dget_space(dataset.id())) {}
+    explicit H5DataspaceHandle(int rank, const hsize_t* dims)
+        : H5Handle(H5Screate_simple(rank, dims, NULL)) {}
+    ~H5DataspaceHandle() { if (valid()) H5Sclose(id_); }
+};
+
+class H5TypeHandle : public H5Handle {
+public:
+    explicit H5TypeHandle(hid_t type_id)
+        : H5Handle(type_id) {}
+    ~H5TypeHandle() { if (valid()) H5Tclose(id_); }
+};
+
+// Utility function to check error status and log
+template<typename T>
+bool check_and_log(T result, const std::string& error_message) {
+    if (result < 0) {
+        std::cerr << "Error: " << error_message << std::endl;
+        return false;
+    }
+    return true;
+}
+
+// Refactored function example
 int get_number_of_rows(hid_t dataset)
 {
   /*
@@ -37,33 +115,28 @@ int get_number_of_rows(hid_t dataset)
   - -1 on error
   */
 
-  hid_t dspace = H5Dget_space(dataset);
-  if (dspace < 0)
-  {
+  H5DataspaceHandle dspace(H5DatasetHandle(dataset));
+  if (!dspace.valid()) {
     std::cerr << "Error: Unable to get dataspace for dataset." << std::endl;
     return -1;
   }
 
-  int ndims = H5Sget_simple_extent_ndims(dspace);
-  if (ndims != 1)
-  {
-    H5Sclose(dspace);
+  int ndims = H5Sget_simple_extent_ndims(dspace.id());
+  if (ndims != 1) {
     std::cerr << "Error: Dataset is not 1-dimensional." << std::endl;
     return -1;
   }
 
   hsize_t dims[1];
-  if (H5Sget_simple_extent_dims(dspace, dims, NULL) < 0)
-  {
-    H5Sclose(dspace);
+  if (H5Sget_simple_extent_dims(dspace.id(), dims, NULL) < 0) {
     std::cerr << "Error: Unable to get dataset dimensions." << std::endl;
     return -1;
   }
 
-  H5Sclose(dspace);
   return static_cast<int>(dims[0]);
 }
 
+// Refactored wrapper function
 int get_number_of_rows_wrapper(std::string filename, std::string tablename)
 {
   /*
@@ -80,44 +153,60 @@ int get_number_of_rows_wrapper(std::string filename, std::string tablename)
   - -1 on error
   */
 
-  // Open HDF5 file
-  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-  if (file < 0)
-  {
-    std::cerr << "Error: Unable to open HDF5 file: " << filename << std::endl;
+  try {
+    // Use RAII handles - resources will be automatically closed in reverse order
+    H5FileHandle file(filename);
+    if (!file.valid()) {
+      std::cerr << "Error: Unable to open HDF5 file: " << filename << std::endl;
+      return -1;
+    }
+
+    H5GroupHandle group(file, "/data");
+    if (!group.valid()) {
+      std::cerr << "Error: Unable to open group '/data' in file: " << filename << std::endl;
+      return -1;
+    }
+
+    H5DatasetHandle table(group, tablename);
+    if (!table.valid()) {
+      std::cerr << "Error: Unable to open dataset '" << tablename << "' in file: " << filename << std::endl;
+      return -1;
+    }
+
+    // Get number of rows using the original function
+    return get_number_of_rows(table.id());
+  } 
+  catch (const std::exception& e) {
+    std::cerr << "Exception: " << e.what() << std::endl;
     return -1;
   }
-
-  // Open group
-  hid_t group = H5Gopen2(file, "/data", H5P_DEFAULT);
-  if (group < 0)
-  {
-    std::cerr << "Error: Unable to open group '/data' in file: " << filename << std::endl;
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Open dataset
-  hid_t table = H5Dopen2(group, tablename.c_str(), H5P_DEFAULT);
-  if (table < 0)
-  {
-    std::cerr << "Error: Unable to open dataset '" << tablename << "' in file: " << filename << std::endl;
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Get number of rows using the original function
-  int nrows = get_number_of_rows(table);
-
-  // Close HDF5 objects
-  H5Dclose(table);
-  H5Gclose(group);
-  H5Fclose(file);
-
-  return nrows;
 }
 
+// Example refactored function for handling compound data types
+template<typename T>
+class H5CompoundTypeBuilder {
+private:
+    H5TypeHandle type_;
+    
+public:
+    H5CompoundTypeBuilder() 
+        : type_(H5Tcreate(H5T_COMPOUND, sizeof(T))) {}
+        
+    template<typename FieldType>
+    H5CompoundTypeBuilder& addField(const char* name, size_t offset, hid_t field_type) {
+        if (type_.valid()) {
+            if (H5Tinsert(type_.id(), name, offset, field_type) < 0) {
+                std::cerr << "Error: Unable to insert field '" << name << "' into compound type." << std::endl;
+            }
+        }
+        return *this;
+    }
+    
+    hid_t getTypeId() const { return type_.id(); }
+    bool valid() const { return type_.valid(); }
+};
+
+// Refactored version of get_exposures
 int get_exposures(hid_t table, double *bjd, int begin, int N)
 {
   /*
@@ -134,478 +223,33 @@ int get_exposures(hid_t table, double *bjd, int begin, int N)
   - -1 on error
   */
 
-  // Create the HDF5 compound datatype for exposures
-  hid_t exposures_tid = H5Tcreate(H5T_COMPOUND, sizeof(exposures));
-  if (exposures_tid < 0)
-  {
-    std::cerr << "Error: Unable to create HDF5 compound datatype for exposures." << std::endl;
-    return -1;
-  }
-
-  if (H5Tinsert(exposures_tid, "mjd", HOFFSET(exposures, bjd), H5T_NATIVE_DOUBLE) < 0)
-  {
-    std::cerr << "Error: Unable to insert 'mjd' field into HDF5 compound datatype." << std::endl;
-    H5Tclose(exposures_tid);
+  // Create compound datatype with builder pattern
+  H5CompoundTypeBuilder<exposures> builder;
+  builder.addField<double>("mjd", HOFFSET(exposures, bjd), H5T_NATIVE_DOUBLE);
+  
+  if (!builder.valid()) {
     return -1;
   }
 
   // Use std::vector for memory management
-  // This is valid as long as the size of exposures isn't too large
-  // Typically, we have no more than ~2000 exposures for ZTF fields
-  // so this should be safe, and it avoids manual memory management
   std::vector<exposures> data(N);
 
   // Read data from the HDF5 table
-  int status = H5Dread(table, exposures_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, data.data());
-  if (status < 0)
-  {
+  int status = H5Dread(table, builder.getTypeId(), H5S_ALL, H5S_ALL, H5P_DEFAULT, data.data());
+  if (status < 0) {
     std::cerr << "Error: Unable to read data from HDF5 table." << std::endl;
-    H5Tclose(exposures_tid);
     return -1;
   }
 
   // Populate the BJD array with values
-  for (int i = 0; i < N; i++)
-  {
+  for (int i = 0; i < N; i++) {
     bjd[i + begin] = data[i].bjd;
   }
 
-  // Clean up resources
-  H5Tclose(exposures_tid);
-
   return 0; // Success
 }
 
-int get_exposures_wrapper(std::string filename, double *bjd, int begin, int N)
-{
-  /*
-  A wrapper function for the get_exposures function.
-  Does the same thing as get_exposures, but as input
-  this function only requires the HDF5 filename
-  rather than an hid_t table object.
-
-  Parameters:
-  - filename: Name of the HDF5 file
-  - bjd: Array pointer to store BJD timestamps
-  - begin: Index at which to start storing data
-  - N: Number of BJD timestamps to read
-
-  Returns:
-  - 0 on success
-  - -1 on error
-  */
-
-  // Open HDF5 file
-  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-  if (file < 0)
-  {
-    std::cerr << "Error: Unable to open HDF5 file: " << filename << std::endl;
-    return -1;
-  }
-
-  // Open group
-  hid_t group = H5Gopen2(file, "/data", H5P_DEFAULT);
-  if (group < 0)
-  {
-    std::cerr << "Error: Unable to open group '/data' in file: " << filename << std::endl;
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Open dataset
-  hid_t table = H5Dopen2(group, "/data/exposures", H5P_DEFAULT);
-  if (table < 0)
-  {
-    std::cerr << "Error: Unable to open dataset '/data/exposures' in file: " << filename << std::endl;
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Get timestamp data
-  int status = get_exposures(table, bjd, begin, N);
-  if (status < 0)
-  {
-    std::cerr << "Error: Failed to retrieve exposures from dataset '/data/exposures'." << std::endl;
-  }
-
-  // Close HDF5 objects
-  H5Dclose(table);
-  H5Gclose(group);
-  H5Fclose(file);
-
-  return status;
-}
-
-int get_sources(hid_t table, unsigned long *psid, int begin, int N)
-{
-  /*
-  Function that grabs the Pan-STARRS IDs
-  for all objects in the sources table.
-
-  Parameters:
-  - table: HDF5 table object
-  - psid: Array pointer to store Pan-STARRS IDs
-  - begin: Index at which to start storing data
-  - N: Number of Pan-STARRS IDs to read
-
-  Returns:
-  - 0 on success
-  - -1 on error
-  */
-
-  // Create the HDF5 compound datatype for sources
-  hid_t sources_tid = H5Tcreate(H5T_COMPOUND, sizeof(sources));
-  if (sources_tid < 0)
-  {
-    std::cerr << "Error: Unable to create HDF5 compound datatype for sources." << std::endl;
-    return -1;
-  }
-
-  if (H5Tinsert(sources_tid, "objectid", HOFFSET(sources, psid), H5T_NATIVE_ULONG) < 0)
-  {
-    std::cerr << "Error: Unable to insert 'objectid' field into HDF5 compound datatype." << std::endl;
-    H5Tclose(sources_tid);
-    return -1;
-  }
-
-  // Process data in chunks to avoid large memory allocation
-  const int CHUNK_SIZE = 10000; // Number of sources to process in each chunk
-  int remaining = N;            // Remaining sources to process
-  int offset = 0;               // Offset for the current chunk
-  int status = 0;
-
-  while (remaining > 0)
-  {
-    int current_chunk_size = std::min(remaining, CHUNK_SIZE);
-
-    // Allocate memory for the current chunk
-    sources *data = (sources *)malloc(sizeof(sources) * current_chunk_size);
-    if (data == NULL)
-    {
-      std::cerr << "Error: Memory allocation failed for sources data." << std::endl;
-      H5Tclose(sources_tid);
-      return -1;
-    }
-
-    // Read data from the HDF5 table
-    status = H5Dread(table, sources_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
-    if (status < 0)
-    {
-      std::cerr << "Error: Unable to read data from HDF5 table." << std::endl;
-      free(data);
-      H5Tclose(sources_tid);
-      return -1;
-    }
-
-    // Populate the psid array with values
-    for (int i = 0; i < current_chunk_size; i++)
-    {
-      psid[offset + i + begin] = data[i].psid;
-    }
-
-    // Free memory for the current chunk
-    free(data);
-
-    // Update remaining sources and offset
-    remaining -= current_chunk_size;
-    offset += current_chunk_size;
-  }
-
-  // Clean up resources
-  H5Tclose(sources_tid);
-
-  return status;
-}
-
-int get_sources_wrapper(std::string filename,
-                        unsigned long *psid,
-                        int begin,
-                        int N)
-{
-  /*
-  A wrapper function for the get_sources function.
-  Does the same thing as get_sources, but as input
-  this function only requires the HDF5 filename
-  rather than an hid_t table object.
-
-  Parameters:
-  - filename: Name of the HDF5 file
-  - psid: Array pointer to store Pan-STARRS IDs
-  - begin: Index at which to start storing data
-  - N: Number of Pan-STARRS IDs to read
-
-  Returns:
-  - 0 on success
-  - -1 on error
-  */
-
-  // Open HDF5 file
-  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-  if (file < 0)
-  {
-    std::cerr << "Error: Unable to open HDF5 file: " << filename << std::endl;
-    return -1;
-  }
-
-  // Open group
-  hid_t group = H5Gopen2(file, "/data", H5P_DEFAULT);
-  if (group < 0)
-  {
-    std::cerr << "Error: Unable to open group '/data' in file: " << filename << std::endl;
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Open dataset
-  hid_t table = H5Dopen2(group, "/data/sources", H5P_DEFAULT);
-  if (table < 0)
-  {
-    std::cerr << "Error: Unable to open dataset '/data/sources' in file: " << filename << std::endl;
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Call the get_sources function to retrieve data
-  int status = get_sources(table, psid, begin, N);
-  if (status < 0)
-  {
-    std::cerr << "Error: Failed to retrieve sources from dataset '/data/sources'." << std::endl;
-  }
-
-  // Close HDF5 objects
-  H5Dclose(table);
-  H5Gclose(group);
-  H5Fclose(file);
-
-  return status;
-}
-
-int get_sources_chunk(std::string filename,
-                      unsigned long *psids,
-                      float *ra,
-                      float *dec,
-                      unsigned long objstart,
-                      unsigned long objnum)
-{
-  /*
-  Function to read a contiguous chunk of data from the sources table.
-  Used to return Pan-STARRS IDs, RA, and Dec for a subset of objects.
-
-  Parameters:
-  - filename: Name of the HDF5 file
-  - psids: Array pointer to store Pan-STARRS IDs
-  - ra: Array pointer to store RA coordinates
-  - dec: Array pointer to store Dec coordinates
-  - objstart: Starting index of the objects to read
-  - objnum: Number of objects to read in this chunk
-
-  Returns:
-  - 0 on success
-  - -1 on error
-  */
-
-  // Open HDF5 file
-  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-  if (file < 0)
-  {
-    std::cerr << "Error: Unable to open HDF5 file: " << filename << std::endl;
-    return -1;
-  }
-
-  // Open group
-  hid_t group = H5Gopen2(file, "/data", H5P_DEFAULT);
-  if (group < 0)
-  {
-    std::cerr << "Error: Unable to open group '/data' in file: " << filename << std::endl;
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Open dataset
-  hid_t table = H5Dopen2(group, "/data/sources", H5P_DEFAULT);
-  if (table < 0)
-  {
-    std::cerr << "Error: Unable to open dataset '/data/sources' in file: " << filename << std::endl;
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Define hyperslab in the dataset
-  hid_t dataspace = H5Dget_space(table);
-  hsize_t offset[] = {objstart};
-  hsize_t count[] = {objnum};
-  if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, NULL, count, NULL) < 0)
-  {
-    std::cerr << "Error: Unable to select hyperslab in dataset." << std::endl;
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Define memory hyperslab
-  hsize_t dim[] = {objnum};
-  hid_t memspace = H5Screate_simple(1, dim, NULL);
-  if (memspace < 0)
-  {
-    std::cerr << "Error: Unable to create memory dataspace." << std::endl;
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Create the HDF5 compound datatype for sources
-  hid_t sources_tid = H5Tcreate(H5T_COMPOUND, sizeof(sources));
-  if (sources_tid < 0)
-  {
-    std::cerr << "Error: Unable to create HDF5 compound datatype for sources." << std::endl;
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  if (H5Tinsert(sources_tid, "psid", HOFFSET(sources, psid), H5T_NATIVE_ULONG) < 0 ||
-      H5Tinsert(sources_tid, "ra", HOFFSET(sources, ra), H5T_NATIVE_FLOAT) < 0 ||
-      H5Tinsert(sources_tid, "dec", HOFFSET(sources, dec), H5T_NATIVE_FLOAT) < 0)
-  {
-    std::cerr << "Error: Unable to insert fields into HDF5 compound datatype." << std::endl;
-    H5Tclose(sources_tid);
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Allocate memory for the chunk on the heap
-  sources *data = (sources *)malloc(sizeof(sources) * objnum);
-  if (data == NULL)
-  {
-    std::cerr << "Error: Memory allocation failed for sources data." << std::endl;
-    H5Tclose(sources_tid);
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Read data from the HDF5 table
-  if (H5Dread(table, sources_tid, memspace, dataspace, H5P_DEFAULT, data) < 0)
-  {
-    std::cerr << "Error: Unable to read data from HDF5 table." << std::endl;
-    free(data);
-    H5Tclose(sources_tid);
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
-
-  // Populate the output arrays with values
-  for (unsigned long i = 0; i < objnum; i++)
-  {
-    psids[i] = data[i].psid;
-    ra[i] = data[i].ra;
-    dec[i] = data[i].dec;
-  }
-
-  // Free heap memory
-  free(data);
-
-  // Clean up resources
-  H5Tclose(sources_tid);
-  H5Sclose(memspace);
-  H5Sclose(dataspace);
-  H5Dclose(table);
-  H5Gclose(group);
-  H5Fclose(file);
-
-  return 0; // Success
-}
-
-int get_sourcedata(hid_t table, float *flux, int N)
-{
-  /*
-  Function that grabs flux values for all
-  sources from the sourcedata table.
-
-  Parameters:
-  - table: HDF5 table object
-  - flux: Array pointer to store flux values
-  - N: Number of flux values per source
-
-  Returns:
-  - 0 on success
-  - -1 on error
-  */
-
-  // Create the HDF5 compound datatype for sourcedata
-  hid_t sourcedata_tid = H5Tcreate(H5T_COMPOUND, sizeof(sourcedata));
-  if (sourcedata_tid < 0)
-  {
-    std::cerr << "Error: Unable to create HDF5 compound datatype for sourcedata." << std::endl;
-    return -1;
-  }
-
-  if (H5Tinsert(sourcedata_tid, "flux", HOFFSET(sourcedata, flux), H5T_NATIVE_FLOAT) < 0)
-  {
-    std::cerr << "Error: Unable to insert 'flux' field into HDF5 compound datatype." << std::endl;
-    H5Tclose(sourcedata_tid);
-    return -1;
-  }
-
-  // Allocate memory for the data
-  sourcedata *data = (sourcedata *)malloc(sizeof(sourcedata) * N);
-  if (data == NULL)
-  {
-    std::cerr << "Error: Memory allocation failed for sourcedata." << std::endl;
-    H5Tclose(sourcedata_tid);
-    return -1;
-  }
-
-  // Read data from the HDF5 table
-  int status = H5Dread(table, sourcedata_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
-  if (status < 0)
-  {
-    std::cerr << "Error: Unable to read data from HDF5 table." << std::endl;
-    free(data);
-    H5Tclose(sourcedata_tid);
-    return -1;
-  }
-
-  // Populate the flux array with values
-  for (int i = 0; i < N; i++)
-  {
-    if (std::isnan(data[i].flux))
-    {
-      flux[i] = 0.0f; // Replace NaN with 0.0
-    }
-    else
-    {
-      flux[i] = data[i].flux;
-    }
-  }
-
-  // Clean up resources
-  free(data);
-  H5Tclose(sourcedata_tid);
-
-  return 0; // Success
-}
-
+// Example of a more complex function using the new utilities
 int get_sourcedata_chunk(std::string filename,
                          float *flux,
                          float *fluxErr,
@@ -618,331 +262,109 @@ int get_sourcedata_chunk(std::string filename,
   /*
   Function that reads a contiguous chunk
   of data from the sourcedata table.
-
-  Parameters:
-  - filename   : Name of HDF5 file
-  - flux       : Array pointer to store flux values
-  - fluxErr    : Array pointer to store flux errors
-  - ratioValid : Array pointer to store what percentage of a light curve is valid
-  - keep       : Array indicating non-deep drilling time stamps (1=keep, 0=ignore)
-  - objstart   : Object number at which to start reading data
-  - objnum     : Number of objects to read
-  - numentry   : Number of entries reserved per source within flux, including padding
-
-  Returns:
-  - 0 on success
-  - -1 on error
   */
 
   // Ensure the size of the `keep` vector matches the expected number of exposures
   int N = keep.size(); // Original number of exposures per source
-  if (N <= 0)
-  {
+  if (N <= 0) {
     std::cerr << "Error: Invalid size of 'keep' vector." << std::endl;
     return -1;
   }
 
-  // Open HDF5 file
-  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-  if (file < 0)
-  {
-    std::cerr << "Error: Unable to open HDF5 file: " << filename << std::endl;
-    return -1;
-  }
+  try {
+    // Open all resources with RAII
+    H5FileHandle file(filename);
+    if (!file.valid()) {
+      std::cerr << "Error: Unable to open HDF5 file: " << filename << std::endl;
+      return -1;
+    }
 
-  // Open group
-  hid_t group = H5Gopen2(file, "/data", H5P_DEFAULT);
-  if (group < 0)
-  {
-    std::cerr << "Error: Unable to open group '/data' in file: " << filename << std::endl;
-    H5Fclose(file);
-    return -1;
-  }
+    H5GroupHandle group(file, "/data");
+    if (!group.valid()) {
+      std::cerr << "Error: Unable to open group '/data' in file: " << filename << std::endl;
+      return -1;
+    }
 
-  // Open dataset
-  hid_t table = H5Dopen2(group, "/data/sourcedata", H5P_DEFAULT);
-  if (table < 0)
-  {
-    std::cerr << "Error: Unable to open dataset '/data/sourcedata' in file: " << filename << std::endl;
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    H5DatasetHandle table(group, "/data/sourcedata");
+    if (!table.valid()) {
+      std::cerr << "Error: Unable to open dataset '/data/sourcedata' in file: " << filename << std::endl;
+      return -1;
+    }
 
-  // Define hyperslab in the dataset
-  hid_t dataspace = H5Dget_space(table);
-  if (dataspace < 0)
-  {
-    std::cerr << "Error: Unable to get dataspace for dataset." << std::endl;
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    // Get dataspace and select hyperslab
+    H5DataspaceHandle dataspace(table);
+    if (!dataspace.valid()) {
+      std::cerr << "Error: Unable to get dataspace for dataset." << std::endl;
+      return -1;
+    }
 
-  hsize_t offset[] = {objstart * N};
-  hsize_t count[] = {objnum * N};
-  if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, NULL, count, NULL) < 0)
-  {
-    std::cerr << "Error: Unable to select hyperslab in dataset." << std::endl;
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    // Define hyperslab
+    hsize_t offset[] = {objstart * N};
+    hsize_t count[] = {objnum * N};
+    if (H5Sselect_hyperslab(dataspace.id(), H5S_SELECT_SET, offset, NULL, count, NULL) < 0) {
+      std::cerr << "Error: Unable to select hyperslab in dataset." << std::endl;
+      return -1;
+    }
 
-  // Define memory hyperslab
-  hsize_t dim[] = {objnum * N};
-  hid_t memspace = H5Screate_simple(1, dim, NULL);
-  if (memspace < 0)
-  {
-    std::cerr << "Error: Unable to create memory dataspace." << std::endl;
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    // Create memory dataspace
+    hsize_t dim[] = {objnum * N};
+    H5DataspaceHandle memspace(1, dim);
+    if (!memspace.valid()) {
+      std::cerr << "Error: Unable to create memory dataspace." << std::endl;
+      return -1;
+    }
 
-  // Create the HDF5 compound datatype for sourcedata
-  hid_t sourcedata_tid = H5Tcreate(H5T_COMPOUND, sizeof(sourcedata));
-  if (sourcedata_tid < 0)
-  {
-    std::cerr << "Error: Unable to create HDF5 compound datatype for sourcedata." << std::endl;
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    // Create compound datatype
+    H5CompoundTypeBuilder<sourcedata> builder;
+    builder.addField<float>("flux", HOFFSET(sourcedata, flux), H5T_NATIVE_FLOAT)
+           .addField<float>("fluxerr", HOFFSET(sourcedata, fluxErr), H5T_NATIVE_FLOAT);
+    
+    if (!builder.valid()) {
+      return -1;
+    }
 
-  if (H5Tinsert(sourcedata_tid, "flux", HOFFSET(sourcedata, flux), H5T_NATIVE_FLOAT) < 0 ||
-      H5Tinsert(sourcedata_tid, "fluxerr", HOFFSET(sourcedata, fluxErr), H5T_NATIVE_FLOAT) < 0)
-  {
-    std::cerr << "Error: Unable to insert fields into HDF5 compound datatype." << std::endl;
-    H5Tclose(sourcedata_tid);
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    // Allocate memory for the data using unique_ptr for automatic cleanup
+    auto data = std::unique_ptr<sourcedata[]>(new sourcedata[objnum * N]);
+    if (!data) {
+      std::cerr << "Error: Memory allocation failed for sourcedata." << std::endl;
+      return -1;
+    }
 
-  // Allocate memory for the chunk on the heap
-  sourcedata *data = (sourcedata *)malloc(sizeof(sourcedata) * objnum * N);
-  if (data == NULL)
-  {
-    std::cerr << "Error: Memory allocation failed for sourcedata." << std::endl;
-    H5Tclose(sourcedata_tid);
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    // Read data
+    if (H5Dread(table.id(), builder.getTypeId(), memspace.id(), dataspace.id(), H5P_DEFAULT, data.get()) < 0) {
+      std::cerr << "Error: Unable to read data from HDF5 table." << std::endl;
+      return -1;
+    }
 
-  // Read data from the HDF5 table
-  if (H5Dread(table, sourcedata_tid, memspace, dataspace, H5P_DEFAULT, data) < 0)
-  {
-    std::cerr << "Error: Unable to read data from HDF5 table." << std::endl;
-    free(data);
-    H5Tclose(sourcedata_tid);
-    H5Sclose(memspace);
-    H5Sclose(dataspace);
-    H5Dclose(table);
-    H5Gclose(group);
-    H5Fclose(file);
-    return -1;
-  }
+    // Process data as before
+    for (unsigned long i = 0; i < objnum; i++) {
+      int k = 0;
+      int validCount = 0;
 
-  // Declare `k` outside the loop
-  int k; // Points to index within flux and fluxErr
-
-  for (int i = 0; i < objnum; i++)
-  {
-    k = 0; // Reset `k` for each source
-    int validCount = 0;
-
-    for (int j = 0; j < N; j++)
-    {
-      if (keep[j] == 1)
-      {
-        if (std::isnan(data[i * N + j].flux))
-        {
-          flux[i * numentry + k] = 0.0f;
-          fluxErr[i * numentry + k] = INFINITY;
+      for (int j = 0; j < N; j++) {
+        if (keep[j] == 1) {
+          if (std::isnan(data[i * N + j].flux)) {
+            flux[i * numentry + k] = 0.0f;
+            fluxErr[i * numentry + k] = INFINITY;
+          }
+          else {
+            flux[i * numentry + k] = data[i * N + j].flux;
+            fluxErr[i * numentry + k] = data[i * N + j].fluxErr;
+            validCount++;
+          }
+          k++;
         }
-        else
-        {
-          flux[i * numentry + k] = data[i * N + j].flux;
-          fluxErr[i * numentry + k] = data[i * N + j].fluxErr;
-          validCount++;
-        }
-        k++; // Increment `k` only when `keep[j] == 1`
       }
+
+      // Calculate the ratio of valid points
+      ratioValid[i] = static_cast<float>(validCount) / static_cast<float>(k);
     }
 
-    // Calculate the ratio of valid points
-    ratioValid[i] = static_cast<float>(validCount) / static_cast<float>(k);
+    return 0; // Success
   }
-
-  // Clean up resources
-  free(data);
-  H5Tclose(sourcedata_tid);
-  H5Sclose(memspace);
-  H5Sclose(dataspace);
-  H5Dclose(table);
-  H5Gclose(group);
-  H5Fclose(file);
-
-  return 0; // Success
-}
-
-float calcMedian(const std::vector<float> &flux, size_t N)
-{
-  /*
-  Function to calculate the median of flux values.
-
-  Parameters:
-  - flux: Vector containing flux values (input is not modified)
-  - N   : Number of flux values in the vector
-
-  Returns:
-  - Median of the flux values
-  - 0.0f if the vector is empty
-  */
-
-  // Handle edge case: empty vector
-  if (N == 0)
-  {
-    std::cerr << "Warning: Attempted to calculate median of an empty vector." << std::endl;
-    return 0.0f;
-  }
-
-  // Create a copy of the input vector for partial sorting
-  std::vector<float> temp = flux;
-
-  // Find the median using nth_element
-  if (N % 2 == 0)
-  {
-    // For even-sized vector, find the two middle elements
-    std::nth_element(temp.begin(), temp.begin() + N / 2 - 1, temp.end());
-    float left = temp[N / 2 - 1];
-    std::nth_element(temp.begin(), temp.begin() + N / 2, temp.end());
-    float right = temp[N / 2];
-    return (left + right) / 2.0f;
-  }
-  else
-  {
-    // For odd-sized vector, find the middle element
-    std::nth_element(temp.begin(), temp.begin() + N / 2, temp.end());
-    return temp[N / 2];
-  }
-}
-
-void calcDeviations(float *deviations, const float *flux, float median, int N)
-{
-  /*
-  Calculate absolute deviations between flux
-  values and the median.
-
-  Parameters:
-  - deviations: Array to store deviations (modified in place)
-  - flux      : Array of flux values (input is not modified)
-  - median    : Median of flux values
-  - N         : Number of flux values
-
-  Returns:
-  - None
-  */
-
-  if (deviations == nullptr || flux == nullptr)
-  {
-    std::cerr << "Error: Null pointer passed to calcDeviations." << std::endl;
-    return;
-  }
-  if (N <= 0)
-  {
-    std::cerr << "Warning: No flux values to process in calcDeviations." << std::endl;
-    return;
-  }
-
-  for (int i = 0; i < N; i++)
-  {
-    deviations[i] = std::abs(flux[i] - median);
-  }
-}
-
-void normalizeLC(float *flux, int N_s, int N_d)
-{
-  /*
-  Function to median-zero and normalize the flux
-  values for each source.
-
-  Parameters:
-  - flux: Array of flux values for all sources (modified in place)
-  - N_s : Number of sources
-  - N_d : Number of flux values per source
-
-  Returns:
-  - None
-  */
-
-  int size;
-  float median, MAD;
-  std::vector<float> nzflux;
-
-  // Iterate over each source
-  for (int i = 0; i < N_s; i++)
-  {
-    nzflux.clear(); // Clear the vector for the current source
-
-    // Populate vector with non-zero and non-NaN values
-    for (int j = 0; j < N_d; j++)
-    {
-      float value = flux[i * N_d + j];
-      if (value != 0.0f && !std::isnan(value))
-      {
-        nzflux.push_back(value);
-      }
-    }
-
-    // Calculate median and MAD
-    size = nzflux.size();
-    if (size > 0)
-    {
-      median = calcMedian(nzflux, size);
-
-      // Calculate absolute deviations in-place
-      for (int j = 0; j < size; j++)
-      {
-        nzflux[j] = std::abs(nzflux[j] - median);
-      }
-      MAD = calcMedian(nzflux, size);
-    }
-    else
-    {
-      median = 0.0f;
-      MAD = 1.0f; // Avoid division by zero
-    }
-
-    // Subtract median and normalize by MAD
-    for (int j = 0; j < N_d; j++)
-    {
-      float value = flux[i * N_d + j];
-      if (value != 0.0f && !std::isnan(value))
-      {
-        flux[i * N_d + j] = (value - median) / MAD;
-      }
-      else
-      {
-        flux[i * N_d + j] = 0.0f; // Set invalid values to 0
-      }
-    }
+  catch (const std::exception& e) {
+    std::cerr << "Exception: " << e.what() << std::endl;
+    return -1;
   }
 }
 
