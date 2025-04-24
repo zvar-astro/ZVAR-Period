@@ -6,6 +6,14 @@
 #include <string>
 #include <vector>
 #include <hdf5.h>
+#include <thrust/sort.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+#include <curand.h>
+#include <curand_kernel.h>
 
 #ifndef PEAK_UTILS_H_
 #define PEAK_UTILS_H_
@@ -30,6 +38,14 @@ float mad(
     float*, // v
     size_t, // N
     float // median
+);
+
+__global__ void CudaComputeMedianandMAD(
+    float* data, // data
+    float* medians, // median outputs
+    float* mads, // mad outputs
+    int N_dat, // N_dat
+    int N_curves // N_curves
 );
 
 // Function to return both mean and stdev of vector

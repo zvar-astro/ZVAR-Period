@@ -1,3 +1,16 @@
+/*
+ * LEGACY CODE NOTICE
+ * -------------------
+ * This file contains legacy implementations of CPU-based functions for the FPW periodogram.
+ * These functions were originally used for prototyping and testing purposes but are no longer
+ * utilized in the current implementation of the ZVAR-Period project.
+ *
+ * The GPU-based implementations have replaced these functions for improved performance and scalability.
+ * This file is retained in the repository for historical reference and should not be used in production.
+ *
+ * If you are looking for the active implementation, refer to the GPU-based functions in kernels.cu and wrappers.cu.
+ */
+
 #include "cpu_functions.h"
 
 VectorXi makeIndices(const VectorXd& times, const double f, const int N_bins){
