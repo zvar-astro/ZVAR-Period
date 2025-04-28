@@ -232,109 +232,6 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
     }
 }
 
-// __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads, int N_dat, int N_curves) {
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-//     if (idx < N_curves) {
-//         // Pointer to the start of the curve data for this thread
-//         float* curve_data = data + idx * N_dat;
-
-//         // Variables for Torben's algorithm
-//         int less, greater, equal;
-//         float min, max, guess, maxltguess, mingtguess;
-
-//         // Step 1: Initialize min and max
-//         min = max = curve_data[0];
-//         for (int i = 1; i < N_dat; i++) {
-//             if (curve_data[i] < min) min = curve_data[i];
-//             if (curve_data[i] > max) max = curve_data[i];
-//         }
-
-//         // Step 2: Compute the median using Torben's algorithm
-//         while (true) {
-//             guess = (min + max) / 2.0f;
-//             less = 0;
-//             greater = 0;
-//             equal = 0;
-//             maxltguess = min;
-//             mingtguess = max;
-
-//             for (int i = 0; i < N_dat; i++) {
-//                 if (curve_data[i] < guess) {
-//                     less++;
-//                     if (curve_data[i] > maxltguess) maxltguess = curve_data[i];
-//                 } else if (curve_data[i] > guess) {
-//                     greater++;
-//                     if (curve_data[i] < mingtguess) mingtguess = curve_data[i];
-//                 } else {
-//                     equal++;
-//                 }
-//             }
-
-//             if (less <= (N_dat + 1) / 2 && greater <= (N_dat + 1) / 2) break;
-//             else if (less > greater) max = maxltguess;
-//             else min = mingtguess;
-//         }
-
-//         // Determine the median
-//         float median_value;
-//         if (less >= (N_dat + 1) / 2) {
-//             median_value = maxltguess;
-//         } else if (less + equal >= (N_dat + 1) / 2) {
-//             median_value = guess;
-//         } else {
-//             median_value = mingtguess;
-//         }
-//         medians[idx] = median_value;
-
-//         // Step 3: Compute the MAD using Torben's algorithm
-//         min = fabsf(curve_data[0] - median_value);
-//         max = min;
-//         for (int i = 1; i < N_dat; i++) {
-//             float abs_diff = fabsf(curve_data[i] - median_value);
-//             if (abs_diff < min) min = abs_diff;
-//             if (abs_diff > max) max = abs_diff;
-//         }
-
-//         while (true) {
-//             guess = (min + max) / 2.0f;
-//             less = 0;
-//             greater = 0;
-//             equal = 0;
-//             maxltguess = min;
-//             mingtguess = max;
-
-//             for (int i = 0; i < N_dat; i++) {
-//                 float abs_diff = fabsf(curve_data[i] - median_value);
-//                 if (abs_diff < guess) {
-//                     less++;
-//                     if (abs_diff > maxltguess) maxltguess = abs_diff;
-//                 } else if (abs_diff > guess) {
-//                     greater++;
-//                     if (abs_diff < mingtguess) mingtguess = abs_diff;
-//                 } else {
-//                     equal++;
-//                 }
-//             }
-
-//             if (less <= (N_dat + 1) / 2 && greater <= (N_dat + 1) / 2) break;
-//             else if (less > greater) max = maxltguess;
-//             else min = mingtguess;
-//         }
-
-//         // Determine the MAD
-//         float mad_value;
-//         if (less >= (N_dat + 1) / 2) {
-//             mad_value = maxltguess;
-//         } else if (less + equal >= (N_dat + 1) / 2) {
-//             mad_value = guess;
-//         } else {
-//             mad_value = mingtguess;
-//         }
-//         mads[idx] = mad_value;
-//     }
-// }
-
 
 std::tuple<float, float> pg_stats(std::vector<float> v) {
 
@@ -567,3 +464,6 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     std::vector<int>().swap(priority_to_position);
     return itop;
 }
+
+//GPU implementation of the peak finding in N_curves of N_dat length
+// __global__ void cudaFindPeaks(float* data, int Ntop, int distance, float median, float mad, )

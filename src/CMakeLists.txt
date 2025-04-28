@@ -20,13 +20,12 @@ find_package(HDF5 REQUIRED COMPONENTS CXX)
 include_directories(${HDF5_INCLUDE_DIRS})
 
 #Add Catch2 subdirectory
-add_subdirectory(/data/ztf/dev/swhitebook/github/Catch2 Catch2-build)
+add_subdirectory($ENV{CATCH2_DIR} Catch2-build)
 
 # Add the executable
 add_executable(cudaFPW main.cu
                periodograms/frequencyGrid.cpp
                periodograms/FPW/kernels.cu 
-               periodograms/FPW/cpu_functions.cpp 
                periodograms/FPW/wrappers.cu 
                statistics/polyfit.cu
                statistics/curve_statistics.cu
@@ -40,9 +39,9 @@ add_executable(cudaFPW main.cu
                )
 
 add_executable(tests ../tests/test_main.cu
+               ../tests/test_utils.cu
                periodograms/FPW/wrappers.cu
                periodograms/FPW/kernels.cu
-               periodograms/FPW/cpu_functions.cpp
                statistics/peak_utils.cu
                statistics/polyfit.cu)
 
