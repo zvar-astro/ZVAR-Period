@@ -7,8 +7,6 @@
 
 # Ignore VSCode settings
 .vscode/
-/test_main.cu
-data/
 *.json
 build/
 packages/
