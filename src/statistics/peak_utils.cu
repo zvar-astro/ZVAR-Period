@@ -329,8 +329,8 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 std::vector<int> find_peaks(const std::vector<float>& x,
                             const int Ntop,
                             const int distance,
-                            const float mean,
-                            const float stdev,
+                            const float median,
+                            const float mad,
                             const float threshold) {
 
     /*
@@ -345,9 +345,9 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     x         = Vector of periodogram values
     Ntop      = number of peaks to return
     distance  = minimum distance between neighboring peaks
-    mean      = periodogram mean
-    stdev     = periodogram standard deviation
-    threshold = S/N threshold for a peak [ S/N = (height-mean) / stdev ]
+    median    = periodogram median
+    mad       = periodogram median absolute deviation
+    threshold = S/N threshold for a peak [ S/N = (height-median) / mad ]
     */
 
     std::vector<int> midpoints;
@@ -362,7 +362,7 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     while (i < i_max) {
 
         // First check that value exceeds threshold
-        snr = (x[i] - mean) / stdev;
+        snr = (x[i] - median) / mad;
         if (snr < threshold) {
             i += 1;
             continue;
@@ -465,5 +465,119 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     return itop;
 }
 
-//GPU implementation of the peak finding in N_curves of N_dat length
-// __global__ void cudaFindPeaks(float* data, int Ntop, int distance, float median, float mad, )
+//Greedy algorithm to find the top N peaks. This algorithm is not perfect, but it is much faster than global search-sort.
+#define Ntop 32
+__global__ void cudaFindPeaks(float* data, float* median, float* mad,
+                              int* peakIndices, float* peakValues,
+                              int N_dat, int N_curves, int distance, float threshold) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < N_curves) {
+        // Pointer to the start of the curve data for this thread
+        float* curve_data = data + idx * N_dat;
+        // Pointers to the output arrays for this curve
+        float* curve_peak_values_out = peakValues + idx * Ntop;
+        int* curve_peak_indices_out = peakIndices + idx * Ntop;
+
+        // --- Local storage for top N peaks for this thread ---
+        int top_indices[Ntop];
+        float top_values[Ntop];
+        for (int k = 0; k < Ntop; ++k) {
+            top_indices[k] = -1;
+            top_values[k] = -INFINITY; // Use -INFINITY
+        }
+        // --- End Local Storage ---
+
+        // --- Step 1: Compute significances in-place ---
+        float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f; // Use safe_mad
+        for (int i = 0; i < N_dat; i++) {
+            curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
+        }
+        // --- End Step 1 ---
+
+        // --- Step 2: Find peaks using threshold pivot and manage top N ---
+        int i = 1; // Start from the second element
+        int i_max = N_dat - 1; // Go up to the second-to-last element
+
+        int distLastPeak = distance; // Initialize to allow first peak
+        float currentThreshold = threshold; // Start with base threshold
+        int candidatePeakIdx = -1;
+        float candidatePeakVal = -INFINITY;
+
+        while (i < i_max) {
+            // Check 1: Local maximum condition (potential peak start)
+            if (curve_data[i] > curve_data[i - 1]) {
+                int i_ahead = i + 1;
+                // Handle plateaus: find next different value
+                while (i_ahead < i_max && curve_data[i_ahead] == curve_data[i]) {
+                    i_ahead++;
+                }
+
+                // Check if it's a peak (next different value is lower)
+                if (i_ahead < i_max && curve_data[i_ahead] < curve_data[i]) {
+                    // Potential peak found.
+                    int current_peak_idx = (i + i_ahead - 1) / 2; // Midpoint index
+                    float current_peak_val = curve_data[i]; // Value at start of plateau
+
+                    // Check 2: Significance threshold and pivot
+                    if (current_peak_val >= currentThreshold) {
+                        // This peak is higher than the current threshold (or the base threshold)
+                        // Make it the new candidate
+                        candidatePeakIdx = current_peak_idx;
+                        candidatePeakVal = current_peak_val;
+                        distLastPeak = 0; // Reset distance since we found a new candidate
+                        currentThreshold = current_peak_val; // Pivot threshold: only accept higher peaks now
+                    }
+                    // Move main loop index past the plateau
+                    i = i_ahead;
+                    continue; // Continue to next iteration to increment distance counter
+                }
+            }
+
+            // Increment distance if a candidate is active
+            if (candidatePeakIdx != -1) {
+                distLastPeak++;
+            }
+
+            // Check 3: Distance constraint met, insert candidate
+            if (distLastPeak == distance && candidatePeakIdx != -1) {
+                // Insert the candidate peak into the sorted top_N list
+                int ins_pos = Ntop;
+                for (int j = 0; j < Ntop; ++j) {
+                    if (candidatePeakVal > top_values[j]) {
+                        ins_pos = j;
+                        break;
+                    }
+                }
+                if (ins_pos < Ntop) {
+                    // Shift elements down
+                    for (int k = Ntop - 1; k > ins_pos; --k) {
+                        top_indices[k] = top_indices[k - 1];
+                        top_values[k] = top_values[k - 1];
+                    }
+                    // Insert new peak
+                    top_indices[ins_pos] = candidatePeakIdx;
+                    top_values[ins_pos] = candidatePeakVal;
+                }
+
+                // Reset for next search window
+                distLastPeak = 0; // Reset distance counter (start counting from the accepted peak)
+                currentThreshold = threshold; // Reset threshold to base
+                candidatePeakIdx = -1; // Clear candidate
+                candidatePeakVal = -INFINITY;
+            }
+
+            i++; // Move to the next point if no peak/plateau was handled
+        }
+        // --- End Step 2 ---
+
+        // --- Step 3: Write results from local arrays to global memory ---
+        for (int k = 0; k < Ntop; ++k) {
+            curve_peak_indices_out[k] = top_indices[k];
+            // Use the actual S/N value if found, otherwise 0.0f
+            curve_peak_values_out[k] = (top_indices[k] != -1) ? top_values[k] : 0.0f;
+        }
+        // --- End Step 3 ---
+    }
+}

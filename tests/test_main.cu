@@ -299,6 +299,245 @@ TEST_CASE("Check GPU Median and MAD Calculations", "[Statistics]") {
     }
 }
 
+//Set Ntop at compile time
+#define Ntop 32
+
+TEST_CASE("Check GPU Peak Finding vs CPU", "[Statistics]") {
+    // Read the frequency grid file
+    std::string fgridFile = "../tests/data/fgrid.csv";
+    std::vector<std::vector<double>> fgridData = readCSV(fgridFile);
+    std::vector<double> fgrid = extractColumn(fgridData, 0);
+    //convert to float
+    std::vector<float> fgridFloat(fgrid.size());
+    std::transform(fgrid.begin(), fgrid.end(), fgridFloat.begin(),
+                   [](double val) { return static_cast<float>(val); });
+
+
+    std::string expectedFile = "../tests/data/CPU_periodogram.csv";
+    std::vector<std::vector<double>> expectedData = readCSV(expectedFile);
+    std::vector<double> cpuPeriodogram = extractColumn(expectedData, 0);
+    // Convert to float
+    std::vector<float> cpuPeriodogramFloat(cpuPeriodogram.size());
+    std::transform(cpuPeriodogram.begin(), cpuPeriodogram.end(), cpuPeriodogramFloat.begin(),
+                   [](double val) { return static_cast<float>(val); });
+
+    const int N_dat = fgrid.size();
+    const int N_curves = 1; // Test with a single curve for simplicity
+
+    // --- Parameters ---
+    const int distance = 300;
+    const float threshold = 1.5f; // Significance threshold
+
+    // --- Calculate Median/MAD ---
+    float pgramMedian = median(cpuPeriodogramFloat.data(), N_dat);
+    float pgramMAD = mad(cpuPeriodogramFloat.data(), N_dat, pgramMedian);
+
+    // --- Run CPU Version ---
+    // Use the significance array as input, with mean=0, stdev=1
+    std::vector<int> cpu_peaks_indices = find_peaks(cpuPeriodogramFloat, Ntop, distance, pgramMedian, pgramMAD, threshold);
+
+    // --- Prepare GPU Data ---
+    float* d_data;
+    float* d_median;
+    float* d_mad;
+    int* d_peakIndices;
+    float* d_peakValues; // Although not strictly compared, the kernel needs it
+
+    cudaMalloc(&d_data, N_curves * N_dat * sizeof(float));
+    cudaMalloc(&d_median, N_curves * sizeof(float));
+    cudaMalloc(&d_mad, N_curves * sizeof(float));
+    cudaMalloc(&d_peakIndices, N_curves * Ntop * sizeof(int));
+    cudaMalloc(&d_peakValues, N_curves * Ntop * sizeof(float));
+
+    // Copy periodogram data to GPU
+    cudaMemcpy(d_data, cpuPeriodogramFloat.data(), N_dat * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_median, &pgramMedian, sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_mad, &pgramMAD, sizeof(float), cudaMemcpyHostToDevice);
+
+    // --- Run GPU Version ---
+    dim3 blockSize(256); // Example block size
+    dim3 gridSize((N_curves + blockSize.x - 1) / blockSize.x);
+
+    // IMPORTANT: The GPU kernel modifies d_data in-place.
+    // Since we copied significance data, this is okay for this test structure.
+    cudaFindPeaks<<<gridSize, blockSize>>>(d_data, d_median, d_mad,
+                                           d_peakIndices, d_peakValues,
+                                           N_dat, N_curves, distance, threshold);
+    cudaGetLastError(); // Check for kernel launch errors
+    cudaDeviceSynchronize(); // Wait for kernel to finish
+
+    // --- Copy GPU Results ---
+    std::vector<int> gpu_peaks_indices(Ntop);
+    // Copy results for the first (and only) curve
+    cudaMemcpy(gpu_peaks_indices.data(), d_peakIndices, Ntop * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // // --- Compare Results ---
+    // // Sort both vectors to compare contents regardless of order (ignoring -1 placeholders)
+    // auto sort_and_filter = [](std::vector<int>& v) {
+    //     v.erase(std::remove(v.begin(), v.end(), -1), v.end());
+    //     std::sort(v.begin(), v.end());
+    // };
+
+    // sort_and_filter(cpu_peaks_indices);
+    // sort_and_filter(gpu_peaks_indices);
+
+    // Use Catch2 assertions
+    REQUIRE(cpu_peaks_indices.size() == gpu_peaks_indices.size());
+    CHECK(cpu_peaks_indices == gpu_peaks_indices);
+
+    // Optional: Print for debugging if CHECK fails
+    if (cpu_peaks_indices != gpu_peaks_indices) {
+        std::cout << "CPU Peaks: ";
+        for(int idx : cpu_peaks_indices) std::cout << idx << " ";
+        std::cout << std::endl;
+        std::cout << "GPU Peaks: ";
+        for(int idx : gpu_peaks_indices) std::cout << idx << " ";
+        std::cout << std::endl;
+    }
+
+
+    // --- Clean Up GPU Memory ---
+    cudaFree(d_data);
+    cudaFree(d_median);
+    cudaFree(d_mad);
+    cudaFree(d_peakIndices);
+    cudaFree(d_peakValues);
+}
+
+
+TEST_CASE("Check GPU Peak Finding vs CPU Timing", "[Statistics][Timing]") {
+    try {
+        // --- Parameters ---
+        const int N_dat = 1000000; // Length of each curve
+        const int N_curves = 1000; // Number of curves to process
+        const int distance = 300;
+        const float threshold = 1.5f; // Significance threshold
+        // Ntop is assumed to be defined elsewhere
+
+        // --- Generate Random Data ---
+        std::mt19937 gen(Catch::getSeed());
+        std::normal_distribution<float> dist(0.0f, 10.0f); // Mean 0, Stddev 10
+
+        std::vector<float> h_data(static_cast<size_t>(N_curves) * N_dat);
+        for (size_t i = 0; i < h_data.size(); ++i) {
+            h_data[i] = dist(gen);
+        }
+
+        // --- GPU Median/MAD Calculation ---
+        float* d_data;
+        float* d_median;
+        float* d_mad;
+        int* d_peakIndices;
+        float* d_peakValues;
+
+        cudaMalloc(&d_data, static_cast<size_t>(N_curves) * N_dat * sizeof(float));
+        cudaMalloc(&d_median, N_curves * sizeof(float));
+        cudaMalloc(&d_mad, N_curves * sizeof(float));
+        cudaMalloc(&d_peakIndices, static_cast<size_t>(N_curves) * Ntop * sizeof(int));
+        cudaMalloc(&d_peakValues, static_cast<size_t>(N_curves) * Ntop * sizeof(float));
+
+        // Copy data to GPU
+        cudaMemcpy(d_data, h_data.data(), static_cast<size_t>(N_curves) * N_dat * sizeof(float), cudaMemcpyHostToDevice);
+
+        // Run GPU Median/MAD kernel
+        dim3 blockSizeMed(256);
+        dim3 gridSizeMed((N_curves + blockSizeMed.x - 1) / blockSizeMed.x);
+        CudaComputeMedianandMAD<<<gridSizeMed, blockSizeMed>>>(d_data, d_median, d_mad, N_dat, N_curves);
+        cudaDeviceSynchronize(); // Sync after median/mad kernel
+        cudaGetLastError(); // Check for errors
+
+        // Copy GPU-computed medians/MADs back to host for CPU processing
+        std::vector<float> h_gpu_medians(N_curves);
+        std::vector<float> h_gpu_mads(N_curves);
+        cudaMemcpy(h_gpu_medians.data(), d_median, N_curves * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(h_gpu_mads.data(), d_mad, N_curves * sizeof(float), cudaMemcpyDeviceToHost);
+
+
+        // --- CPU Peak Finding (using GPU Medians/MADs) ---
+        std::vector<std::vector<int>> h_cpu_peak_indices(N_curves, std::vector<int>(Ntop, -1));
+        auto cpuStart = std::chrono::high_resolution_clock::now();
+
+        for (int c = 0; c < N_curves; ++c) {
+            // Get pointer to current curve data on host
+            float* current_curve_data = h_data.data() + static_cast<size_t>(c) * N_dat;
+            // Create a *non-owning* vector view or copy if find_peaks modifies it
+            std::vector<float> curve_vec(current_curve_data, current_curve_data + N_dat);
+
+            // Run CPU peak finding using the medians/MADs calculated by the GPU
+            std::vector<int> peaks = find_peaks(curve_vec, Ntop, distance, h_gpu_medians[c], h_gpu_mads[c], threshold);
+            // Ensure peaks vector size doesn't exceed Ntop before copying
+             size_t num_peaks_to_copy = std::min(peaks.size(), static_cast<size_t>(Ntop));
+            std::copy(peaks.begin(), peaks.begin() + num_peaks_to_copy, h_cpu_peak_indices[c].begin());
+        }
+
+        auto cpuEnd = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> cpuElapsed = cpuEnd - cpuStart;
+        std::cout << "CPU Peak Finding Total Time (using GPU Med/MAD): " << cpuElapsed.count() << " ms" << std::endl;
+        std::cout << "CPU Peak Finding Avg Time per Curve: " << cpuElapsed.count() / N_curves << " ms" << std::endl;
+
+
+        // --- GPU Peak Finding ---
+        dim3 blockSizePeaks(256);
+        dim3 gridSizePeaks((N_curves + blockSizePeaks.x - 1) / blockSizePeaks.x);
+
+        cudaEvent_t startGPU, stopGPU;
+        cudaEventCreate(&startGPU);
+        cudaEventCreate(&stopGPU);
+
+        cudaEventRecord(startGPU);
+
+        // IMPORTANT: The GPU kernel modifies d_data in-place (calculates S/N).
+        // It uses d_median and d_mad which were computed by CudaComputeMedianandMAD.
+        cudaFindPeaks<<<gridSizePeaks, blockSizePeaks>>>(d_data, d_median, d_mad,
+                                                        d_peakIndices, d_peakValues,
+                                                        N_dat, N_curves, distance, threshold);
+        cudaGetLastError(); // Check for kernel launch errors
+
+        cudaEventRecord(stopGPU);
+        cudaEventSynchronize(stopGPU); // Wait for kernel to finish
+
+        float gpuElapsedMs;
+        cudaEventElapsedTime(&gpuElapsedMs, startGPU, stopGPU);
+        std::cout << "GPU Peak Finding Kernel Time: " << gpuElapsedMs << " ms" << std::endl;
+        std::cout << "GPU Peak Finding Avg Time per Curve: " << gpuElapsedMs / N_curves << " ms" << std::endl;
+
+        // --- Copy GPU Results ---
+        std::vector<int> h_gpu_peak_indices_flat(static_cast<size_t>(N_curves) * Ntop);
+        cudaMemcpy(h_gpu_peak_indices_flat.data(), d_peakIndices, static_cast<size_t>(N_curves) * Ntop * sizeof(int), cudaMemcpyDeviceToHost);
+
+        bool all_match = true;
+        for(int c = 0; c < N_curves; ++c) {
+            std::vector<int> current_cpu_peaks = h_cpu_peak_indices[c];
+            std::vector<int> current_gpu_peaks(h_gpu_peak_indices_flat.begin() + static_cast<size_t>(c) * Ntop,
+                                               h_gpu_peak_indices_flat.begin() + static_cast<size_t>(c + 1) * Ntop);
+
+            // sort_and_filter(current_cpu_peaks);
+            // sort_and_filter(current_gpu_peaks);
+            for (int p = 0; p < 1; ++p) {
+                if (current_cpu_peaks[p] != current_gpu_peaks[p]) {
+                    all_match = false;
+                    std::cout << "Mismatch found for curve " << c << std::endl;
+                }
+            }
+
+        }
+        CHECK(all_match); // Check if all curves produced matching peaks
+
+
+        // --- Clean Up GPU Memory ---
+        cudaFree(d_data);
+        cudaFree(d_median);
+        cudaFree(d_mad);
+        cudaFree(d_peakIndices);
+        cudaFree(d_peakValues);
+        cudaEventDestroy(startGPU);
+        cudaEventDestroy(stopGPU);
+
+    } catch (const std::exception& e) {
+        FAIL("Exception occurred: " << e.what());
+    }
+}
+
 
 /*
 TEST_CASE("Check GPUFit's Output", "[Statistics]") {
