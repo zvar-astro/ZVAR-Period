@@ -96,6 +96,7 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
     // Run kernels for each batch of frequencies over all light curves
     for (unsigned long i = 0; i < N_freqs; i += N_freqs_batch) {
+        std::cout << "Processing frequency batch " << i / N_freqs_batch + 1 << " of " << (N_freqs + N_freqs_batch - 1) / N_freqs_batch << std::endl;
         unsigned long N_freqs_current = std::min(N_freqs_batch, N_freqs - i);
 
         error = cudaMemcpyAsync(freqs, freqs_host + i, N_freqs_current * sizeof(float), cudaMemcpyHostToDevice);

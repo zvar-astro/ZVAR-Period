@@ -26,8 +26,8 @@ void handler() {
 
 int main(int argc, char* argv[]) {
     // Check if the correct number of arguments is provided
-    if (argc != 3) {
-        cerr << "Usage: " << argv[0] << " <path_to_matchfile> <device>" << endl;
+    if (argc != 4) {
+        cerr << "Usage: " << argv[0] << " <path_to_matchfile> <device> <datatype> (zvar or zforce)" << endl;
         return 1;
     }
 
@@ -66,12 +66,40 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // get the datatype from the command line argument
+    string datatype = argv[3];
+    if (datatype != "zvar" && datatype != "zforce") {
+        cerr << "Invalid datatype. Please provide either 'zvar' or 'zforce'." << endl;
+        return 1;
+    }
+    cout << "Using datatype: " << datatype << endl;
+
+    // we create the field names based on the datatype
+    string id_field_name = datatype + "psid";
+    string ra_field_name = datatype + "ra";
+    string dec_field_name = datatype + "dec";
+    string time_field_name = datatype + "hjd";
+    string flux_field_name = datatype + "flux";
+    string fluxErr_field_name = datatype + "fluxErr";
+    if (datatype == "zforce") {
+        time_field_name = "mjd";
+    }
+    
     // check if the log directory exists, create it (and all the parent directories) if it doesn't
-    string logdir = "/data/zvar/logs";
-    string mkdir = "mkdir -p " + logdir;
+    // string logdir = "/data/zvar/logs";
+    // instead get the log directory from the environment variable, if not provided, use the default
+    const char* logdir = std::getenv("ZVAR_LOG_DIR");
+    std::cout << "ZVAR_LOG_DIR: " << logdir << std::endl;
+    if (logdir == nullptr) {
+        std::cerr << "ZVAR_LOG_DIR environment variable not set. Using default: /data/zvar/logs" << std::endl;
+        logdir = "/data/zvar/logs";
+    }
+    string logdir_str(logdir);
+
+    string mkdir = "mkdir -p " + logdir_str;
     system(mkdir.c_str());
 
-    string logpath = logdir + "/device_" + to_string(device) + "_log.txt";
+    string logpath = logdir_str + "/device_" + to_string(device) + "_log.txt";
 
     //check if the log file exists, create one if it doesn't
     ifstream infile(logpath);
@@ -84,7 +112,11 @@ int main(int argc, char* argv[]) {
     }
 
     // Run the file with the provided arguments
-    process(hdf_filename, device, logpath);
+    process(
+        hdf_filename, device, logpath,
+        id_field_name.c_str(), ra_field_name.c_str(), dec_field_name.c_str(),
+        time_field_name.c_str(), flux_field_name.c_str(), fluxErr_field_name.c_str()
+    );
 
     return 0;
 }

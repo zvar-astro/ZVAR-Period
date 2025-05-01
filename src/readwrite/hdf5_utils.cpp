@@ -9,6 +9,7 @@
 #include <cmath>
 #include <algorithm>
 #include <numeric>
+#include <stdexcept>
 #include "hdf5.h"
 #include "hdf5_utils.h"
 
@@ -118,7 +119,9 @@ int get_number_of_rows_wrapper(std::string filename, std::string tablename)
   return nrows;
 }
 
-int get_exposures(hid_t table, double *bjd, int begin, int N)
+// int get_exposures(hid_t table, double *bjd, int begin, int N)
+// let's also take the name of the field as an argument
+int get_exposures(hid_t table, double *bjd, int begin, int N, const char *field_name)
 {
   /*
   Function that grabs BJD timestamps from the exposures table.
@@ -128,6 +131,7 @@ int get_exposures(hid_t table, double *bjd, int begin, int N)
   - bjd: Array pointer to store BJD timestamps
   - begin: Index at which to start storing data
   - N: Number of BJD timestamps to read
+  - field_name: Name of the field to read
 
   Returns:
   - 0 on success
@@ -142,13 +146,12 @@ int get_exposures(hid_t table, double *bjd, int begin, int N)
     return -1;
   }
 
-  if (H5Tinsert(exposures_tid, "mjd", HOFFSET(exposures, bjd), H5T_NATIVE_DOUBLE) < 0)
+  if (H5Tinsert(exposures_tid, field_name, HOFFSET(exposures, bjd), H5T_NATIVE_DOUBLE) < 0)
   {
-    std::cerr << "Error: Unable to insert 'mjd' field into HDF5 compound datatype." << std::endl;
+    std::cerr << "Error: Unable to insert '" << field_name << "' field into HDF5 compound datatype." << std::endl;
     H5Tclose(exposures_tid);
     return -1;
   }
-
   // Use std::vector for memory management
   // This is valid as long as the size of exposures isn't too large
   // Typically, we have no more than ~2000 exposures for ZTF fields
@@ -176,7 +179,7 @@ int get_exposures(hid_t table, double *bjd, int begin, int N)
   return 0; // Success
 }
 
-int get_exposures_wrapper(std::string filename, double *bjd, int begin, int N)
+int get_exposures_wrapper(std::string filename, double *bjd, int begin, int N, const char *field_name)
 {
   /*
   A wrapper function for the get_exposures function.
@@ -189,6 +192,7 @@ int get_exposures_wrapper(std::string filename, double *bjd, int begin, int N)
   - bjd: Array pointer to store BJD timestamps
   - begin: Index at which to start storing data
   - N: Number of BJD timestamps to read
+  - field_name: Name of the field to read
 
   Returns:
   - 0 on success
@@ -223,7 +227,7 @@ int get_exposures_wrapper(std::string filename, double *bjd, int begin, int N)
   }
 
   // Get timestamp data
-  int status = get_exposures(table, bjd, begin, N);
+  int status = get_exposures(table, bjd, begin, N, field_name);
   if (status < 0)
   {
     std::cerr << "Error: Failed to retrieve exposures from dataset '/data/exposures'." << std::endl;
@@ -237,7 +241,7 @@ int get_exposures_wrapper(std::string filename, double *bjd, int begin, int N)
   return status;
 }
 
-int get_sources(hid_t table, unsigned long *psid, int begin, int N)
+int get_sources(hid_t table, unsigned long *psid, int begin, int N, const char *field_name)
 {
   /*
   Function that grabs the Pan-STARRS IDs
@@ -248,6 +252,7 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N)
   - psid: Array pointer to store Pan-STARRS IDs
   - begin: Index at which to start storing data
   - N: Number of Pan-STARRS IDs to read
+  - field_name: Name of the field to read
 
   Returns:
   - 0 on success
@@ -262,9 +267,9 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N)
     return -1;
   }
 
-  if (H5Tinsert(sources_tid, "objectid", HOFFSET(sources, psid), H5T_NATIVE_ULONG) < 0)
+  if (H5Tinsert(sources_tid, field_name, HOFFSET(sources, psid), H5T_NATIVE_ULONG) < 0)
   {
-    std::cerr << "Error: Unable to insert 'objectid' field into HDF5 compound datatype." << std::endl;
+    std::cerr << "Error: Unable to insert '" << field_name << "' field into HDF5 compound datatype." << std::endl;
     H5Tclose(sources_tid);
     return -1;
   }
@@ -321,7 +326,8 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N)
 int get_sources_wrapper(std::string filename,
                         unsigned long *psid,
                         int begin,
-                        int N)
+                        int N,
+                        const char *field_name)
 {
   /*
   A wrapper function for the get_sources function.
@@ -334,6 +340,7 @@ int get_sources_wrapper(std::string filename,
   - psid: Array pointer to store Pan-STARRS IDs
   - begin: Index at which to start storing data
   - N: Number of Pan-STARRS IDs to read
+  - field_name: Name of the field to read
 
   Returns:
   - 0 on success
@@ -368,7 +375,7 @@ int get_sources_wrapper(std::string filename,
   }
 
   // Call the get_sources function to retrieve data
-  int status = get_sources(table, psid, begin, N);
+  int status = get_sources(table, psid, begin, N, field_name);
   if (status < 0)
   {
     std::cerr << "Error: Failed to retrieve sources from dataset '/data/sources'." << std::endl;
@@ -387,7 +394,10 @@ int get_sources_chunk(std::string filename,
                       float *ra,
                       float *dec,
                       unsigned long objstart,
-                      unsigned long objnum)
+                      unsigned long objnum,
+                      const char *id_field_name,
+                      const char *ra_field_name,
+                      const char *dec_field_name)
 {
   /*
   Function to read a contiguous chunk of data from the sources table.
@@ -400,6 +410,9 @@ int get_sources_chunk(std::string filename,
   - dec: Array pointer to store Dec coordinates
   - objstart: Starting index of the objects to read
   - objnum: Number of objects to read in this chunk
+  - id_field_name: Name of the field for the IDs
+  - ra_field_name: Name of the field for RA coordinates
+  - dec_field_name: Name of the field for Dec coordinates
 
   Returns:
   - 0 on success
@@ -472,9 +485,9 @@ int get_sources_chunk(std::string filename,
     return -1;
   }
 
-  if (H5Tinsert(sources_tid, "psid", HOFFSET(sources, psid), H5T_NATIVE_ULONG) < 0 ||
-      H5Tinsert(sources_tid, "ra", HOFFSET(sources, ra), H5T_NATIVE_FLOAT) < 0 ||
-      H5Tinsert(sources_tid, "dec", HOFFSET(sources, dec), H5T_NATIVE_FLOAT) < 0)
+  if (H5Tinsert(sources_tid, id_field_name, HOFFSET(sources, psid), H5T_NATIVE_ULONG) < 0 ||
+      H5Tinsert(sources_tid, ra_field_name, HOFFSET(sources, ra), H5T_NATIVE_FLOAT) < 0 ||
+      H5Tinsert(sources_tid, dec_field_name, HOFFSET(sources, dec), H5T_NATIVE_FLOAT) < 0)
   {
     std::cerr << "Error: Unable to insert fields into HDF5 compound datatype." << std::endl;
     H5Tclose(sources_tid);
@@ -536,7 +549,7 @@ int get_sources_chunk(std::string filename,
   return 0; // Success
 }
 
-int get_sourcedata(hid_t table, float *flux, int N)
+int get_sourcedata(hid_t table, float *flux, int N, const char *field_name)
 {
   /*
   Function that grabs flux values for all
@@ -546,6 +559,7 @@ int get_sourcedata(hid_t table, float *flux, int N)
   - table: HDF5 table object
   - flux: Array pointer to store flux values
   - N: Number of flux values per source
+  - field_name: Name of the field to read
 
   Returns:
   - 0 on success
@@ -560,9 +574,9 @@ int get_sourcedata(hid_t table, float *flux, int N)
     return -1;
   }
 
-  if (H5Tinsert(sourcedata_tid, "flux", HOFFSET(sourcedata, flux), H5T_NATIVE_FLOAT) < 0)
+  if (H5Tinsert(sourcedata_tid, field_name, HOFFSET(sourcedata, flux), H5T_NATIVE_FLOAT) < 0)
   {
-    std::cerr << "Error: Unable to insert 'flux' field into HDF5 compound datatype." << std::endl;
+    std::cerr << "Error: Unable to insert '" << field_name << "' field into HDF5 compound datatype." << std::endl;
     H5Tclose(sourcedata_tid);
     return -1;
   }
@@ -607,13 +621,15 @@ int get_sourcedata(hid_t table, float *flux, int N)
 }
 
 int get_sourcedata_chunk(std::string filename,
-                         float *flux,
-                         float *fluxErr,
-                         float *ratioValid,
-                         std::vector<unsigned char> &keep,
-                         unsigned long objstart,
-                         unsigned long objnum,
-                         unsigned long numentry)
+                        float *flux,
+                        float *fluxErr,
+                        float *ratioValid,
+                        std::vector<unsigned char> &keep,
+                        unsigned long objstart,
+                        unsigned long objnum,
+                        unsigned long numentry,
+                        const char *flux_field_name,
+                        const char *fluxErr_field_name)
 {
   /*
   Function that reads a contiguous chunk
@@ -628,6 +644,8 @@ int get_sourcedata_chunk(std::string filename,
   - objstart   : Object number at which to start reading data
   - objnum     : Number of objects to read
   - numentry   : Number of entries reserved per source within flux, including padding
+  - flux_field_name: Name of the field for flux values
+  - fluxErr_field_name: Name of the field for flux error values
 
   Returns:
   - 0 on success
@@ -718,8 +736,8 @@ int get_sourcedata_chunk(std::string filename,
     return -1;
   }
 
-  if (H5Tinsert(sourcedata_tid, "flux", HOFFSET(sourcedata, flux), H5T_NATIVE_FLOAT) < 0 ||
-      H5Tinsert(sourcedata_tid, "fluxerr", HOFFSET(sourcedata, fluxErr), H5T_NATIVE_FLOAT) < 0)
+  if (H5Tinsert(sourcedata_tid, flux_field_name, HOFFSET(sourcedata, flux), H5T_NATIVE_FLOAT) < 0 ||
+      H5Tinsert(sourcedata_tid, fluxErr_field_name, HOFFSET(sourcedata, fluxErr), H5T_NATIVE_FLOAT) < 0)
   {
     std::cerr << "Error: Unable to insert fields into HDF5 compound datatype." << std::endl;
     H5Tclose(sourcedata_tid);
@@ -802,7 +820,7 @@ int get_sourcedata_chunk(std::string filename,
   return 0; // Success
 }
 
-float calcMedian(const std::vector<float> &flux, size_t N)
+float calcMedian(const std::vector<float> flux, size_t N)
 {
   /*
   Function to calculate the median of flux values.
@@ -1161,7 +1179,7 @@ void appendResults(std::string filename, unsigned long *psids, float *ra, float 
   H5Fclose(file_id);
 }
 
-std::vector<unsigned char> flagDeepDrilling(const std::vector<double> &time, int N_d)
+std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int N_d)
 {
   /*
   Function to identify any timestamps within light
@@ -1232,4 +1250,69 @@ std::vector<unsigned char> flagDeepDrilling(const std::vector<double> &time, int
   }
 
   return keep;
+}
+
+std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned char>> initializeFrameData(
+  const std::string &filename,
+  const char *id_field_name,
+  const char *time_field_name
+)
+{
+  /*
+  Function to initialize frame data from an HDF5 file.
+  Parameters:
+  - filename: Name of the HDF5 file
+  - id_field_name: Name of the field for source IDs
+  - time_field_name: Name of the field for time values
+  Returns:
+  - A tuple containing:
+    - NEXP: Number of exposures
+    - NSRC: Number of sources
+    - time: Vector of time values
+    - deep_drilling_flags: Vector indicating which timestamps to keep
+  */
+
+  // Variables to store number of exposures & sources
+  int NEXP = get_number_of_rows_wrapper(filename, "/data/exposures");
+  int NSRC = get_number_of_rows_wrapper(filename, "/data/sources");
+
+  if (NEXP <= 0 || NSRC <= 0)
+  {
+      throw std::runtime_error("Invalid number of exposures or sources.");
+  }
+
+  // Use NEXP and NSRC to initialize time and source vectors
+  std::vector<double> h_bjd(NEXP, 0.0);         // BJD must be read in with double precision
+  std::vector<unsigned long> sourceid(NSRC, 0); // Source IDs
+
+  // Read HDF5 tables and load into vectors
+  int status = get_exposures_wrapper(filename, h_bjd.data(), 0, NEXP, time_field_name);
+  check_status(status);
+  status = get_sources_wrapper(filename, sourceid.data(), 0, NSRC, id_field_name);
+  check_status(status);
+
+  // Get indices of non-deep drilling time stamps
+  std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP);
+  int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
+  if (non_dd == 0)
+  {
+      throw std::runtime_error("No valid BJDs after filtering.");
+  }
+
+  // Erase the deep drilling BJDs from bjd vector
+  for (int i = NEXP-1; i >= 0; i--) {
+    if (dd_index[i] == 0) {
+        h_bjd.erase(h_bjd.begin() + i);
+    }
+  }
+  NEXP = non_dd; // Update number of exposures
+
+  // Subtract minimum BJD and convert to float
+  std::vector<float> time(NEXP,0.0f); // Time values after subtracting mean BJD
+  double bjdref = std::min_element(h_bjd.begin(), h_bjd.end())[0];
+  for (int i = 0; i < NEXP; i++) {
+    time[i] = static_cast<float>(h_bjd[i] - bjdref);
+  }
+
+  return std::make_tuple(NEXP, NSRC, time, dd_index);
 }
