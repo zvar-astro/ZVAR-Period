@@ -40,7 +40,7 @@ __global__ void cudaDeltaChi2(float* y, float* ivar, int* indices, float* deltaC
 
         // Calculate deltaChiArr
         for (int i = 0; i < N_bins; i++) {
-            float Minv = __fdividef(1.0f, acc_shared[i + N_bins * threadIdx.x + N_bins * blockDim.x * threadIdx.y] + 1.0f);
+            float Minv = __fdividef(1.0f, 2.0f * acc_shared[i + N_bins * threadIdx.x + N_bins * blockDim.x * threadIdx.y]);
             float ytCinvV_current = ytCinvV_shared[i + N_bins * threadIdx.x + N_bins * blockDim.x * threadIdx.y];
             deltaChiArr[curve * N_freqs + freq] += ytCinvV_current * Minv * ytCinvV_current;
         }
@@ -89,7 +89,7 @@ __global__ void cudaDeltaChi2Multibin(float* y, float* ivar, int* indices, float
                     acc += accShared[index * blockDim.x + dataAddress];
                     ytCinvV += ytCinvVShared[index * blockDim.x + dataAddress];
                 }
-                float Minv = __fdividef(1.0f, acc + 1.0f);
+                float Minv = __fdividef(1.0f, 2.0f * acc);
                 deltaChiArr[freq + curve * N_freqs + i * N_curves * N_freqs] += ytCinvV * Minv * ytCinvV;
             }
         }

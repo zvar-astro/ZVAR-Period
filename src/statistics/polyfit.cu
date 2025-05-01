@@ -173,6 +173,15 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
         std::cerr << "GPUfit error: " << error_message << std::endl;
     }
 
+    //Print the output parameters
+    for (int i = 0; i < N_curves; ++i) {
+        std::cout << "Curve " << i << " parameters: ";
+        for (int j = 0; j < N_parameters; ++j) {
+            std::cout << output_parameters[i * N_parameters + j] / pow(t_max, N_parameters - 1 - j) << " ";
+        }
+        std::cout << std::endl;
+    }
+
     // subtract the model y from the data y
     float* y_no_baseline = new float[N_dat * N_curves];
     for (int i = 0; i < N_curves; ++i) {
@@ -180,12 +189,14 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
             for (int j = 0; j < N_dat; ++j) {
                 float y_model = 0;
                 for (int k = 0; k < N_parameters; ++k) {
-                    y_model += output_parameters[i * N_parameters + k] * pow(times[j], N_parameters - 1 - k) / pow(t_max, N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
+                    // y_model += output_parameters[i * N_parameters + k] * pow(times[j], N_parameters - 1 - k) / pow(t_max, N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
+                    y_model += output_parameters[i * N_parameters + k] * pow(times_fractional[j], N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
                 }
                 y_no_baseline[i * N_dat + j] = y[i * N_dat + j] - y_model;
             }
         }
         else {
+            std::cerr << "Warning: Fit for curve " << i << " failed. Output state: " << output_states[i] << std::endl;
             for (int j = 0; j < N_dat; ++j) {
                 y_no_baseline[i * N_dat + j] = y[i * N_dat + j];
             }

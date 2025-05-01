@@ -2,9 +2,9 @@
 #define WRAPPERS_CUH
 
 #include "kernels.cuh"
-#include "cpu_functions.h"
 #include "../../msc/diagnostics.h"
 #include "../../msc/semaphores.h"
+#include <vector>
 #include <omp.h>
 
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
