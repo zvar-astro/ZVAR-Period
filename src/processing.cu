@@ -16,7 +16,17 @@ void checkCudaError(cudaError_t err, const char* msg) {
  * @param logpath The path to the log file
  * 
  */
-void process(std::string hdf_filename, int device, std::string logpath) {
+void process(
+    std::string hdf_filename,
+    int device,
+    std::string logpath,
+    const char *id_field_name,
+    const char *ra_field_name,
+    const char *dec_field_name,
+    const char *time_field_name,
+    const char *flux_field_name,
+    const char *fluxErr_field_name
+) {
 
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
@@ -41,13 +51,17 @@ void process(std::string hdf_filename, int device, std::string logpath) {
     int* N_bins = new int[N_samples]{20, 10, 5};
 
     // Initialize frame data
-    unsigned int NEXP, NSRC; //Number of exposures and sources
-    vector<float> time; //Time values in days
-    vector<unsigned char> dd_indices; //Indices of deep drilling data
-    tie(NEXP, NSRC, time, dd_indices) = initializeFrameData(hdf_filename);
+    unsigned int NEXP, NSRC; // Number of exposures and sources
+    vector<float> time; // Time values in days
+    vector<unsigned char> dd_indices; // Indices of deep drilling data
+    // TODO: pass the name of the time column as an argument
+    std::cout << "Loading frame data..." << std::endl;
+    tie(NEXP, NSRC, time, dd_indices) = initializeFrameData(hdf_filename, id_field_name, time_field_name);
+    std::cout << "initializeFrameData finished" << std::endl;
+
     vector<double> time_double(time.begin(), time.end());
 
-    //Make frequency grid
+    // Make frequency grid
     // double fmin = 1.0; // 1 day
     double fmin = 1.0/10.0; // 10 day maximum period
     // double fmin = -1.0; // No max period
@@ -109,8 +123,6 @@ void process(std::string hdf_filename, int device, std::string logpath) {
     std::vector<unsigned long> psids(NSRC_PER_CHUNK, 0);
     std::vector<float> ra(NSRC_PER_CHUNK, 0.0f);
     std::vector<float> dec(NSRC_PER_CHUNK, 0.0f);
-    // float* medians = new float[NSRC_PER_CHUNK];
-    // float* mads = new float[NSRC_PER_CHUNK];
 
     // Create output file, in OUTPUT_DIR if it exists, otherwise in /data/zvar/output
     const char* outputDirEnv = std::getenv("OUTPUT_DIR");
@@ -123,7 +135,7 @@ void process(std::string hdf_filename, int device, std::string logpath) {
         hdf_filename_copy = hdf_filename_copy.substr(pos + 1);
     }
     std::string results_filename = outputDir + "/" + hdf_filename_copy + "_results.h5.temp";
-    writeResults(results_filename, NSRC, N_samples, N_peaks);
+    createResults(results_filename, NSRC, N_samples, N_peaks);
 
     auto stop_preprocess = chrono::high_resolution_clock::now();
     auto duration_preprocess = chrono::duration_cast<chrono::milliseconds>(stop_preprocess - start_preprocess);
@@ -158,12 +170,22 @@ void process(std::string hdf_filename, int device, std::string logpath) {
         objstart = k * NSRC_PER_CHUNK;
         unsigned long objnum = (k < NCHUNK - 1) ? NSRC_PER_CHUNK : (NSRC - objstart);
 
-        // Load the flux values
-        status = get_sourcedata_chunk(hdf_filename, flux.data(), fluxErr.data(), ratioValid.data(), dd_indices, objstart, objnum, NEXP);
+        // Load the flux and fluxerr values
+        // TODO: pass the name of the flux and fluxerr columns as arguments
+        status = get_sourcedata_chunk(
+            hdf_filename, flux.data(), fluxErr.data(), ratioValid.data(),
+            dd_indices, objstart, objnum, NEXP,
+            flux_field_name, fluxErr_field_name
+        );
         check_status(status);
 
-        // Load the psids
-        status = get_sources_chunk(hdf_filename, psids.data(), ra.data(), dec.data(), objstart, objnum);
+        // Load the ids, ra, dec values
+        // TODO: pass the name of the id, ra, dec columns as arguments
+        status = get_sources_chunk(
+            hdf_filename, psids.data(), ra.data(), dec.data(),
+            objstart, objnum,
+            id_field_name, ra_field_name, dec_field_name
+        );
         check_status(status);
 
         //Check for any nans in the flux values

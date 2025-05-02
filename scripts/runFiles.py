@@ -12,7 +12,7 @@ n_processes = int(os.environ.get('N_PROCESSES', 1))
 n_gpus = int(os.environ.get('N_GPUS', 1))
 # we want to assign up to 2 files to each GPU, so we make sure that the number of threads is at most 2 * n_gpus
 n_processes = min(n_processes, 2 * n_gpus)
-binaries_location = os.environ.get('BINARIES_LOCATION', '../build')
+binaries_location = os.environ.get('BINARIES_LOCATION', './build')
 
 # remove trailing slash if it exists
 if binaries_location.endswith('/'):
@@ -45,7 +45,7 @@ def signal_handler(sig, frame, semaphore_names):
     cleanup_semaphores(semaphore_names)
     sys.exit(0)
 
-def run_cudaFPW(file_path, device, n_process, stop_event):
+def run_cudaFPW(file_path, device, datatype, n_process, stop_event):
     command = [
         'taskset',
         '-c',
@@ -53,7 +53,8 @@ def run_cudaFPW(file_path, device, n_process, stop_event):
         str(n_process * 4) + "-" + str((n_process + 1) * 4 - 1),
         f"{binaries_location}/cudaFPW",
         str(file_path),
-        str(device)
+        str(device),
+        str(datatype),
     ]
 
     try:
@@ -73,7 +74,7 @@ def run_cudaFPW(file_path, device, n_process, stop_event):
         print(f"An error occurred: {e}")
         stop_event.set()
 
-def worker(task_queue, device, n_process, algorithm, stop_event):
+def worker(task_queue, device, n_process, algorithm, datatype, stop_event):
     while not task_queue.empty() and not stop_event.is_set():
         try:
             file_path = task_queue.get_nowait()
@@ -81,7 +82,7 @@ def worker(task_queue, device, n_process, algorithm, stop_event):
             break
 
         if algorithm == 'fpw':
-            run_cudaFPW(file_path, device, n_process, stop_event)
+            run_cudaFPW(file_path, device, datatype, n_process, stop_event)
         elif algorithm == 'schuster':
             raise NotImplementedError("Schuster algorithm is not implemented")
         task_queue.task_done()
@@ -91,6 +92,7 @@ if __name__ == "__main__":
     output_dir = os.environ.get('OUTPUT_DIR', '/data/output')
     
     algorithm = 'fpw'
+    datatype = 'zvar'
 
     semaphores, semaphore_names = create_semaphores()
     
@@ -118,7 +120,7 @@ if __name__ == "__main__":
     for i in range(n_processes):
         device = i % n_gpus
         # subdivision = i // n_gpus  # Each GPU should process two files at a time
-        thread = threading.Thread(target=worker, args=(task_queue, device, i, algorithm, stop_event))
+        thread = threading.Thread(target=worker, args=(task_queue, device, i, algorithm, datatype, stop_event))
         thread.start()
         threads.append(thread)
         # Give the thread a name for easier debugging

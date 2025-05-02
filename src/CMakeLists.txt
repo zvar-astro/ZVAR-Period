@@ -31,7 +31,6 @@ add_executable(cudaFPW main.cu
                statistics/curve_statistics.cu
                statistics/peak_utils.cu
                readwrite/hdf5_utils.cpp
-               readwrite/filepaths.cpp
                msc/diagnostics.cpp
                msc/semaphores.cpp
                msc/memory_managers.cu
