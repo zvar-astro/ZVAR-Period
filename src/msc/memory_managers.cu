@@ -12,7 +12,21 @@ size_t getHostMemory() {
     }
 }
 
-unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t NEXP, size_t NSRC) {
+
+size_t getDeviceMemory(int deviceNum) {
+    cudaSetDevice(deviceNum);
+    cudaDeviceProp device_prop;
+    cudaGetDeviceProperties(&device_prop, deviceNum);
+    if (device_prop.totalGlobalMem != 0) {
+        size_t bytesGlobal = device_prop.totalGlobalMem;
+        return bytesGlobal;
+    } else {
+        std::cerr << "Error: Could not get device memory information" << std::endl;
+        return 0;
+    }
+}
+
+unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t N_exp, size_t N_src) {
     // read the number of instances, the total cap percentage, and the chunk cap percentage
     // from the environment variables
     const char* instancesEnv = std::getenv("N_PROCESSES");
@@ -40,30 +54,17 @@ unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t NEXP
 
     // Decide how many CPU chunks to run based on memory
     size_t singleObjectPeriodogramMemory = N_freqs * N_samples * sizeof(float); // Memory for a single periodogram
-    size_t singleObjectDataMemory = NEXP * 2 * sizeof(float); // Memory for a single object's data (flux and fluxErr)
+    size_t singleObjectDataMemory = N_exp * 2 * sizeof(float); // Memory for a single object's data (flux and fluxErr)
     size_t singleObjectMetaDataMemory = sizeof(float) + sizeof(unsigned long) + 2 * sizeof(float); // Memory for a single object's metadata (ratioValid, psid, ra, dec)
     size_t singleObjectMemory = singleObjectPeriodogramMemory + singleObjectDataMemory + singleObjectMetaDataMemory; // Memory for a single object
     size_t allowedChunkMemory = static_cast<size_t>(chunkCap * static_cast<double>(allowedInstanceMemory)); // Cap CHUNK usage at 95% of instance memory to allow for overhead
     size_t allowedSourcesMemory = allowedChunkMemory / singleObjectMemory; // Memory for sources in a chunk
-    unsigned long NCHUNK = 1 + NSRC / allowedSourcesMemory; // Number of chunks to run
+    unsigned long NCHUNK = 1 + N_src / allowedSourcesMemory; // Number of chunks to run
 
     return NCHUNK;
 }
 
-size_t getDeviceMemory(int deviceNum) {
-    cudaSetDevice(deviceNum);
-    cudaDeviceProp device_prop;
-    cudaGetDeviceProperties(&device_prop, deviceNum);
-    if (device_prop.totalGlobalMem != 0) {
-        size_t bytesGlobal = device_prop.totalGlobalMem;
-        return bytesGlobal;
-    } else {
-        std::cerr << "Error: Could not get device memory information" << std::endl;
-        return 0;
-    }
-}
-
-unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_batch, size_t N_samples, size_t N_curves) {
+unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_batch, size_t N_samples, size_t N_src) {
     // Memory usage per element in bytes
     const size_t float_size = sizeof(float);
     const size_t int_size = sizeof(int);
@@ -80,15 +81,15 @@ unsigned long calculateMaxGPUBatch(int deviceNum, size_t N_dat, size_t N_freqs_b
 
     // read the total cap percentage from the environment variable
     const char* gpuCapEnv = std::getenv("GPU_CAP");
-    double gpuCap = gpuCapEnv ? std::stod(gpuCapEnv) : 0.9; // Default to 0.7 if not set
+    double gpuCap = gpuCapEnv ? std::stod(gpuCapEnv) : 0.9; // Default to 0.9 if not set
 
     // Calculate available memory with safety margin
     size_t available_memory = static_cast<size_t>(gpuCap * static_cast<double>(free_mem));
 
     // Calculate memory usage for each array
     size_t t_memory = N_dat * float_size;
-    size_t y_memory = N_dat * N_curves * float_size;
-    size_t ivar_memory = N_dat * N_curves * float_size;
+    size_t y_memory = N_dat * N_src * float_size;
+    size_t ivar_memory = N_dat * N_src * float_size;
     size_t freqs_memory = N_freqs_batch * float_size;
     size_t indices_memory = N_dat * N_freqs_batch * int_size;
     size_t deltaChiArr_memory = N_freqs_batch * N_samples * float_size;

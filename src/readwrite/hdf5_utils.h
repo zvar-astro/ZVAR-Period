@@ -95,6 +95,9 @@ void calcDeviations(float *, float *, float, size_t);
 // Function to normalize flux values
 void normalizeLC(float *, int, int);
 
+// Function to create a new directory for output files
+std::string createOutputFilepath(std::string output_dir, std::string input_filename);
+
 // Function to create a new HDF5 file to store periodogram results
 void createResults(std::string, int, int, int);
 

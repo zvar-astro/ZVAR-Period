@@ -964,6 +964,19 @@ void normalizeLC(float *flux, int N_s, int N_d)
   }
 }
 
+std::string createOutputFilepath(std::string output_dir, std::string input_hdf_filename)
+{
+    std::string mkdir = "mkdir -p " + output_dir;
+    system(mkdir.c_str());
+    std::string hdf_filename_copy = input_hdf_filename;
+    std::string::size_type pos = hdf_filename_copy.find_last_of("/");
+    if (pos != std::string::npos) {
+        hdf_filename_copy = hdf_filename_copy.substr(pos + 1);
+    }
+    std::string results_filename = output_dir + "/" + hdf_filename_copy + "_results.h5.temp";
+    return results_filename;
+}
+
 void createResults(std::string filename, int total_curves, int N_samples, int N_peaks)
 {
   /*

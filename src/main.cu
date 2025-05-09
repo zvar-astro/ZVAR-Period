@@ -111,12 +111,25 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    string output_dir = "/data/zvar/zvar_results";
+
     // Run the file with the provided arguments
-    process(
-        hdf_filename, device, logpath,
-        id_field_name.c_str(), ra_field_name.c_str(), dec_field_name.c_str(),
-        time_field_name.c_str(), flux_field_name.c_str(), fluxErr_field_name.c_str()
+    //create an external parameters struct
+    ProcessingExternalParams params(
+        device,
+        1, // num_omp_threads
+        hdf_filename,
+        logpath,
+        output_dir,
+        id_field_name,
+        ra_field_name,
+        dec_field_name,
+        time_field_name,
+        flux_field_name,
+        fluxErr_field_name
     );
+
+    process(params);
 
     return 0;
 }

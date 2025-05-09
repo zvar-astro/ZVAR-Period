@@ -4,7 +4,7 @@
 The following values must be factors of N_bins[0]. N_samples is then the length of N_bins and determines how much memory must be allocated.*/
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
                     int N_dat, unsigned long N_curves, unsigned long N_freqs,
-                    int* N_bins, unsigned long N_freqs_batch, unsigned long N_curves_batch, int N_samples) {
+                    const int* N_bins, unsigned long N_freqs_batch, unsigned long N_curves_batch, int N_samples) {
 
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
