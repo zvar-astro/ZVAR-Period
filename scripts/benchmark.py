@@ -7,11 +7,15 @@ import sys
 import time
 import os
 import glob
-import signal
 from multiprocessing import Semaphore
 
 n_processes = 1
 n_gpus = 1
+
+binaries_location = os.environ.get('BINARIES_LOCATION', './build')
+# remove trailing slash if it exists
+if binaries_location.endswith('/'):
+    binaries_location = binaries_location[:-1]
 
 def create_semaphores():
     semaphores = [Semaphore(1) for _ in range(n_gpus)]
@@ -40,15 +44,16 @@ def signal_handler(sig, frame, semaphore_names):
     cleanup_semaphores(semaphore_names)
     sys.exit(0)
 
-def run_cudaFPW(file_path, device, n_process, stop_event):
+def run_cudaFPW(file_path, device, datatype, n_process, stop_event):
     command = [
         'taskset',
         '-c',
         # we take 4 threads per process
         str(n_process * 4) + "-" + str((n_process + 1) * 4 - 1),
-        '../build/cudaFPW',
+        f"{binaries_location}/cudaFPW",
         str(file_path),
-        str(device)
+        str(device),
+        str(datatype),
     ]
 
     try:
@@ -68,7 +73,7 @@ def run_cudaFPW(file_path, device, n_process, stop_event):
         print(f"An error occurred: {e}")
         stop_event.set()
 
-def worker(task_queue, device, n_process, algorithm, stop_event):
+def worker(task_queue, device, n_process, algorithm, datatype, stop_event):
     while not task_queue.empty() and not stop_event.is_set():
         try:
             file_path = task_queue.get_nowait()
@@ -76,7 +81,7 @@ def worker(task_queue, device, n_process, algorithm, stop_event):
             break
 
         if algorithm == 'fpw':
-            run_cudaFPW(file_path, device, n_process, stop_event)
+            run_cudaFPW(file_path, device, datatype, n_process, stop_event)
         elif algorithm == 'schuster':
             raise NotImplementedError("Schuster algorithm is not implemented")
         task_queue.task_done()
@@ -86,6 +91,7 @@ if __name__ == "__main__":
     output_dir = os.environ.get('OUTPUT_DIR', '/data/output')
     
     algorithm = 'fpw'
+    datatype = 'zforce'
 
     semaphores, semaphore_names = create_semaphores()
     
@@ -112,7 +118,7 @@ if __name__ == "__main__":
     start = time.time()
 
     device = 0
-    thread = threading.Thread(target=worker, args=(task_queue, device, 0, algorithm, stop_event))
+    thread = threading.Thread(target=worker, args=(task_queue, device, 0, algorithm, datatype, stop_event))
     thread.start()
     threads.append(thread)
     thread.name = f"Thread-{0}"

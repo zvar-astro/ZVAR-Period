@@ -4,7 +4,7 @@
 The following values must be factors of N_bins[0]. N_samples is then the length of N_bins and determines how much memory must be allocated.*/
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
                     int N_dat, unsigned long N_curves, unsigned long N_freqs,
-                    int* N_bins, unsigned long N_freqs_batch, unsigned long N_curves_batch, int N_samples) {
+                    const int* N_bins, unsigned long N_freqs_batch, unsigned long N_curves_batch, int N_samples) {
 
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
@@ -96,6 +96,7 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
     // Run kernels for each batch of frequencies over all light curves
     for (unsigned long i = 0; i < N_freqs; i += N_freqs_batch) {
+        std::cout << "Processing frequency batch " << i / N_freqs_batch + 1 << " of " << (N_freqs + N_freqs_batch - 1) / N_freqs_batch << std::endl;
         unsigned long N_freqs_current = std::min(N_freqs_batch, N_freqs - i);
 
         error = cudaMemcpyAsync(freqs, freqs_host + i, N_freqs_current * sizeof(float), cudaMemcpyHostToDevice);
