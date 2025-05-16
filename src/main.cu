@@ -56,9 +56,10 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    int maxSharedMem = 0;
+    cudaDeviceGetAttribute(&maxSharedMem, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+
     // Tell the device to use the maximum amount of shared memory.
-    cudaFuncSetAttribute(cudaDeltaChi2, cudaFuncAttributeMaxDynamicSharedMemorySize, 48 * 1024);
-    cudaFuncSetAttribute(cudaDeltaChi2Multibin, cudaFuncAttributeMaxDynamicSharedMemorySize, 48 * 1024);
 
     error = cudaGetLastError();
     if (error != cudaSuccess) {

@@ -1,10 +1,197 @@
 #include "wrappers.cuh"
 
+unsigned char* createIndices(const float* times, const float* freqs, const int N_bins, const int N_dat, const int N_freqs) {
+
+    cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        std::cerr << "unexpected CUDA error (wrappers): " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Allocate memory for device arrays
+    float* times_device;
+    float* freqs_device;
+    unsigned char* indices_device;
+    
+    error = cudaMalloc(&times_device, N_dat * sizeof(float));
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMalloc t: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaMalloc(&freqs_device, N_freqs * sizeof(float));  // Allocate memory for frequencies
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMalloc freqs: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaMalloc(&indices_device, N_dat * N_freqs * sizeof(unsigned char));  // Allocate memory for indices for all frequencies
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMalloc indices: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Copy data from host to device
+    error = cudaMemcpy(times_device, times, N_dat * sizeof(float), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMemcpy t: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaMemcpy(freqs_device, freqs, N_freqs * sizeof(float), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMemcpy freqs: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    dim3 blockSizeInd(16, 16);  // Use a 2D array of threads in each block
+    dim3 gridSizeInd((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs + blockSizeInd.y - 1) / blockSizeInd.y);
+
+    cudaMakeIndices<<<gridSizeInd, blockSizeInd>>>(times_device, freqs_device, indices_device, N_bins, N_dat, N_freqs);
+
+    //Clean up device memory
+    error = cudaFree(times_device);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaFree t: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaFree(freqs_device);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaFree freqs: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    return indices_device;
+}
+
+float* runFPWChunk(unsigned char* indices_device, float* y_host, float* dy_host, int N_dat, unsigned long N_src, unsigned long N_freqs, const int* N_bins, int N_samples) {
+
+    int N_bins_total = 0;
+    for (int i = 0; i < N_samples; i++) {
+        N_bins_total += N_bins[i];
+    }
+
+    cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        std::cerr << "unexpected CUDA error (wrappers): " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Allocate memory for device arrays
+    float* y_device;
+    float* ivar_device;
+    float* periodograms_device;
+    int* N_bins_device;
+    
+    error = cudaMalloc(&y_device, N_dat * N_src * sizeof(float));
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMalloc y: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    error = cudaMalloc(&ivar_device, N_dat * N_src * sizeof(float));
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMalloc ivar: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaMalloc(&periodograms_device, N_freqs * N_src * N_samples * sizeof(float));  // Allocate memory for deltaChiArr for all frequencies
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMalloc deltaChiArr: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    error = cudaMalloc(&N_bins_device, N_samples * sizeof(int));  // Allocate memory for N_bins
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMalloc N_bins_device: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Copy data from host to device
+    error = cudaMemcpy(N_bins_device, N_bins, N_samples * sizeof(int), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMemcpy N_bins_device: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Define block size and grid size for kernel launches
+    dim3 blockSizeChi(32, 8);  // Use a 2D array of threads in each block
+    dim3 gridSizeChi((N_freqs + blockSizeChi.x - 1) / blockSizeChi.x, (N_src + blockSizeChi.y - 1) / blockSizeChi.y);
+    size_t sharedMemoryChi = 2 * N_bins[0] * blockSizeChi.x * blockSizeChi.y * sizeof(float);
+
+    // Allocate memory for host array to hold the result
+    float* deltaChi_host = new float[N_src * N_freqs * N_samples];
+
+    // Create a matrix to store the periodograms for each light curve
+    std::vector<float> periodograms(N_src * N_freqs * N_samples);
+
+    // Copy y and ivar to device
+    float* ivar_host = new float[N_dat * N_src];
+    for (unsigned long i = 0; i < N_src * N_dat; i++) {
+        ivar_host[i] = 1.0 / (dy_host[i] * dy_host[i]);
+    }
+
+    error = cudaMemsetAsync(periodograms_device, 0, N_freqs * N_src * N_samples * sizeof(float));
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMemsetAsync periodograms_device: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaMemcpy(y_device, y_host, N_dat * N_src * sizeof(float), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMemcpy y (wrappers): " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    error = cudaMemcpy(ivar_device, ivar_host, N_dat * N_src * sizeof(float), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMemcpy ivar (wrappers): " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error BEFORE cudaDeltaChi2Multibin (wrappers): " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    cudaDeltaChi2Multibin<<<gridSizeChi, blockSizeChi, sharedMemoryChi>>>(
+                            y_device, ivar_device, indices_device, periodograms_device, N_bins_device, N_dat, N_freqs, N_src, N_samples, N_bins_total);
+
+    error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error DURING cudaDeltaChi2Multibin (wrappers): " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+
+    // Free device memory
+    error = cudaFree(y_device);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaFree y: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    error = cudaFree(ivar_device);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaFree ivar: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaFree(N_bins_device);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaFree N_bins_device: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Free host memory
+    delete[] ivar_host;
+
+    return periodograms_device;
+}
+
 /*Multibin FPW. Instead of passing a single integer value of N_bins we pass an array of N_bins values starting with the largest value.
 The following values must be factors of N_bins[0]. N_samples is then the length of N_bins and determines how much memory must be allocated.*/
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
                     int N_dat, unsigned long N_curves, unsigned long N_freqs,
-                    const int* N_bins, unsigned long N_freqs_batch, unsigned long N_curves_batch, int N_samples) {
+                    const int* N_bins, unsigned long N_freqs_batch, unsigned long N_src_batch, int N_samples) {
 
     int N_bins_total = 0;
     for (int i = 0; i < N_samples; i++) {
@@ -22,21 +209,21 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
     float* y;
     float* ivar;
     float* freqs;
-    int* indices;
+    unsigned char* indices;
     float* deltaChiArr;
-    int* N_bins_dev;
+    int* N_bins_device;
     
     error = cudaMalloc(&t, N_dat * sizeof(float));
     if (error != cudaSuccess) {
         std::cerr << "CUDA error in cudaMalloc t: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
-    error = cudaMalloc(&y, N_dat * N_curves_batch * sizeof(float));
+    error = cudaMalloc(&y, N_dat * N_src_batch * sizeof(float));
     if (error != cudaSuccess) {
         std::cerr << "CUDA error in cudaMalloc y: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
-    error = cudaMalloc(&ivar, N_dat * N_curves_batch * sizeof(float));
+    error = cudaMalloc(&ivar, N_dat * N_src_batch * sizeof(float));
     if (error != cudaSuccess) {
         std::cerr << "CUDA error in cudaMalloc ivar: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
@@ -46,19 +233,19 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
         std::cerr << "CUDA error in cudaMalloc freqs: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
-    error = cudaMalloc(&indices, N_dat * N_freqs_batch * sizeof(int));  // Allocate memory for indices for all frequencies
+    error = cudaMalloc(&indices, N_dat * N_freqs_batch * sizeof(unsigned char));  // Allocate memory for indices for all frequencies
     if (error != cudaSuccess) {
         std::cerr << "CUDA error in cudaMalloc indices: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
-    error = cudaMalloc(&deltaChiArr, N_freqs_batch * N_curves_batch * N_samples * sizeof(float));  // Allocate memory for deltaChiArr for all frequencies
+    error = cudaMalloc(&deltaChiArr, N_freqs_batch * N_src_batch * N_samples * sizeof(float));  // Allocate memory for deltaChiArr for all frequencies
     if (error != cudaSuccess) {
         std::cerr << "CUDA error in cudaMalloc deltaChiArr: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
-    error = cudaMalloc(&N_bins_dev, N_samples * sizeof(int));  // Allocate memory for N_bins
+    error = cudaMalloc(&N_bins_device, N_samples * sizeof(int));  // Allocate memory for N_bins
     if (error != cudaSuccess) {
-        std::cerr << "CUDA error in cudaMalloc N_bins_dev: " << cudaGetErrorString(error) << std::endl;
+        std::cerr << "CUDA error in cudaMalloc N_bins_device: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -69,9 +256,9 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
         exit(EXIT_FAILURE);
         
     }
-    error = cudaMemcpy(N_bins_dev, N_bins, N_samples * sizeof(int), cudaMemcpyHostToDevice);
+    error = cudaMemcpy(N_bins_device, N_bins, N_samples * sizeof(int), cudaMemcpyHostToDevice);
     if (error != cudaSuccess) {
-        std::cerr << "CUDA error in cudaMemcpy N_bins_dev: " << cudaGetErrorString(error) << std::endl;
+        std::cerr << "CUDA error in cudaMemcpy N_bins_device: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -79,11 +266,11 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
     dim3 blockSizeInd(16, 16);  // Use a 2D array of threads in each block
     dim3 gridSizeInd((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs_batch + blockSizeInd.y - 1) / blockSizeInd.y);
     dim3 blockSizeChi(32, 8);  // Use a 2D array of threads in each block
-    dim3 gridSizeChi((N_freqs_batch + blockSizeChi.x - 1) / blockSizeChi.x, (N_curves_batch + blockSizeChi.y - 1) / blockSizeChi.y);
+    dim3 gridSizeChi((N_freqs_batch + blockSizeChi.x - 1) / blockSizeChi.x, (N_src_batch + blockSizeChi.y - 1) / blockSizeChi.y);
     size_t sharedMemoryChi = 2 * N_bins[0] * blockSizeChi.x * blockSizeChi.y * sizeof(float);
 
     // Allocate memory for host array to hold the result
-    float* deltaChi_host = new float[N_curves_batch * N_freqs_batch * N_samples];
+    float* deltaChi_host = new float[N_src_batch * N_freqs_batch * N_samples];
 
     // Create a matrix to store the periodograms for each light curve
     std::vector<float> periodograms(N_curves * N_freqs * N_samples);
@@ -96,7 +283,7 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
     // Run kernels for each batch of frequencies over all light curves
     for (unsigned long i = 0; i < N_freqs; i += N_freqs_batch) {
-        std::cout << "Processing frequency batch " << i / N_freqs_batch + 1 << " of " << (N_freqs + N_freqs_batch - 1) / N_freqs_batch << std::endl;
+        // std::cout << "Processing frequency batch " << i / N_freqs_batch + 1 << " of " << (N_freqs + N_freqs_batch - 1) / N_freqs_batch << std::endl;
         unsigned long N_freqs_current = std::min(N_freqs_batch, N_freqs - i);
 
         error = cudaMemcpyAsync(freqs, freqs_host + i, N_freqs_current * sizeof(float), cudaMemcpyHostToDevice);
@@ -115,8 +302,8 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
             exit(EXIT_FAILURE);
         }
 
-        for (unsigned long j = 0; j < N_curves; j += N_curves_batch) {
-            unsigned long N_curves_current = std::min(N_curves_batch, N_curves - j);
+        for (unsigned long j = 0; j < N_curves; j += N_src_batch) {
+            unsigned long N_curves_current = std::min(N_src_batch, N_curves - j);
 
             error = cudaMemsetAsync(deltaChiArr, 0, N_freqs_current * N_curves_current * N_samples * sizeof(float));
             if (error != cudaSuccess) {
@@ -142,7 +329,7 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
             }
 
             cudaDeltaChi2Multibin<<<gridSizeChi, blockSizeChi, sharedMemoryChi>>>(
-                                    y, ivar, indices, deltaChiArr, N_bins_dev, N_dat, N_freqs_current, N_curves_current, N_samples, N_bins_total);
+                                    y, ivar, indices, deltaChiArr, N_bins_device, N_dat, N_freqs_current, N_curves_current, N_samples, N_bins_total);
 
             error = cudaGetLastError();
             if (error != cudaSuccess) {
@@ -200,6 +387,12 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
     error = cudaFree(deltaChiArr);
     if (error != cudaSuccess) {
         std::cerr << "CUDA error in cudaFree deltaChiArr: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    error = cudaFree(N_bins_device);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaFree N_bins_device: " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
 

@@ -114,6 +114,8 @@ struct FieldData {
     unsigned long N_freqs_batch_gpu_periodogram;
     unsigned long N_src_batch_gpu_baseline;
     unsigned long N_batch_gpu_baseline;
+    unsigned long N_batch_gpu_postprocess;
+    unsigned long N_src_batch_gpu_postprocess;
     
     bool success = false; // To indicate if loading was successful
 };

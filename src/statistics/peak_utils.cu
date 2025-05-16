@@ -122,11 +122,18 @@ __device__ int partition(float* array, int left, int right, int pivotIndex) {
     return storeIndex;
 }
 
-/*
-Torben's Median Algorithm. This algorithm requires no intermediate arrays. 
-*/
 
 __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads, int N_dat, int N_curves) {
+    /*
+    Torben's Median Algorithm. This algorithm requires no intermediate arrays. 
+    Computes the median and MAD of N_curves of N_data points each.
+
+    data = pointer to the data (N_dat * N_curves)
+    medians = pointer to the output array for medians (N_curves)
+    mads = pointer to the output array for MADs (N_curves)
+    N_dat = number of data points in each curve
+    N_curves = number of curves
+    */
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N_curves) {
@@ -327,7 +334,7 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 
 
 std::vector<int> find_peaks(const std::vector<float>& x,
-                            const int Ntop,
+                            const int N_peaks,
                             const int distance,
                             const float median,
                             const float mad,
@@ -343,7 +350,7 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     heights and the minimum distance between neighboring peaks.
 
     x         = Vector of periodogram values
-    Ntop      = number of peaks to return
+    N_peaks      = number of peaks to return
     distance  = minimum distance between neighboring peaks
     median    = periodogram median
     mad       = periodogram median absolute deviation
@@ -387,8 +394,8 @@ std::vector<int> find_peaks(const std::vector<float>& x,
         i += 1;
     }
 
-    // Create vector to store indices of the "Ntop" highest peaks
-    std::vector<int> itop(Ntop, -1);
+    // Create vector to store indices of the "N_peaks" highest peaks
+    std::vector<int> itop(N_peaks, -1);
 
     // First check that some peaks were found.
     if (midpoints.size() < 1) {
@@ -453,8 +460,8 @@ std::vector<int> find_peaks(const std::vector<float>& x,
             ++pcount;
         }
 
-        // Break out of the for-loop once "Ntop" peaks are saved
-        if (pcount >= Ntop) break;
+        // Break out of the for-loop once "N_peaks" peaks are saved
+        if (pcount >= N_peaks) break;
     }
 
     // Clear some memory
@@ -466,7 +473,7 @@ std::vector<int> find_peaks(const std::vector<float>& x,
 }
 
 //Greedy algorithm to find the top N peaks. This algorithm is not perfect, but it is much faster than global search-sort.
-#define Ntop 32
+#define N_peaks 32
 __global__ void cudaFindPeaks(float* data, float* median, float* mad,
                               int* peakIndices, float* peakValues,
                               int N_dat, int N_curves, int distance, float threshold) {
@@ -477,13 +484,13 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
         // Pointer to the start of the curve data for this thread
         float* curve_data = data + idx * N_dat;
         // Pointers to the output arrays for this curve
-        float* curve_peak_values_out = peakValues + idx * Ntop;
-        int* curve_peak_indices_out = peakIndices + idx * Ntop;
+        float* curve_peak_values_out = peakValues + idx * N_peaks;
+        int* curve_peak_indices_out = peakIndices + idx * N_peaks;
 
         // --- Local storage for top N peaks for this thread ---
-        int top_indices[Ntop];
-        float top_values[Ntop];
-        for (int k = 0; k < Ntop; ++k) {
+        int top_indices[N_peaks];
+        float top_values[N_peaks];
+        for (int k = 0; k < N_peaks; ++k) {
             top_indices[k] = -1;
             top_values[k] = -INFINITY; // Use -INFINITY
         }
@@ -543,16 +550,16 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
             // Check 3: Distance constraint met, insert candidate
             if (distLastPeak == distance && candidatePeakIdx != -1) {
                 // Insert the candidate peak into the sorted top_N list
-                int ins_pos = Ntop;
-                for (int j = 0; j < Ntop; ++j) {
+                int ins_pos = N_peaks;
+                for (int j = 0; j < N_peaks; ++j) {
                     if (candidatePeakVal > top_values[j]) {
                         ins_pos = j;
                         break;
                     }
                 }
-                if (ins_pos < Ntop) {
+                if (ins_pos < N_peaks) {
                     // Shift elements down
-                    for (int k = Ntop - 1; k > ins_pos; --k) {
+                    for (int k = N_peaks - 1; k > ins_pos; --k) {
                         top_indices[k] = top_indices[k - 1];
                         top_values[k] = top_values[k - 1];
                     }
@@ -573,11 +580,109 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
         // --- End Step 2 ---
 
         // --- Step 3: Write results from local arrays to global memory ---
-        for (int k = 0; k < Ntop; ++k) {
+        for (int k = 0; k < N_peaks; ++k) {
             curve_peak_indices_out[k] = top_indices[k];
             // Use the actual S/N value if found, otherwise 0.0f
             curve_peak_values_out[k] = (top_indices[k] != -1) ? top_values[k] : 0.0f;
         }
         // --- End Step 3 ---
+    }
+}
+
+
+__global__ void cudaFindPeaksChunk(float* data, float* median, float* mad,
+                                   int* peakIndices, float* peakValues,
+                                   int N_dat, int N_curves, int distance, float threshold,
+                                   int* state_candidate_idx, float* state_candidate_val,
+                                   int* state_distLastPeak, float* state_currentThreshold,
+                                   int chunk_start, int chunk_end) {
+        
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < N_curves) {
+        float* curve_data = data + idx * N_dat;
+        float* curve_peak_values_out = peakValues + idx * N_peaks;
+        int* curve_peak_indices_out = peakIndices + idx * N_peaks;
+
+        // --- Load top N peaks from global memory ---
+        int top_indices[N_peaks];
+        float top_values[N_peaks];
+        for (int k = 0; k < N_peaks; ++k) {
+            top_indices[k] = curve_peak_indices_out[k];
+            top_values[k] = curve_peak_values_out[k];
+        }
+
+        // --- Load persistent state ---
+        int candidatePeakIdx = state_candidate_idx[idx];
+        float candidatePeakVal = state_candidate_val[idx];
+        int distLastPeak = state_distLastPeak[idx];
+        float currentThreshold = state_currentThreshold[idx];
+
+        float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f;
+        // Only normalize the current chunk
+        for (int i = chunk_start; i < chunk_end; i++) {
+            curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
+        }
+
+        int i = max(chunk_start, 1);
+        int i_max = min(chunk_end, N_dat - 1);
+
+        while (i < i_max) {
+            if (curve_data[i] > curve_data[i - 1]) {
+                int i_ahead = i + 1;
+                while (i_ahead < i_max && curve_data[i_ahead] == curve_data[i]) {
+                    i_ahead++;
+                }
+                if (i_ahead < i_max && curve_data[i_ahead] < curve_data[i]) {
+                    int current_peak_idx = (i + i_ahead - 1) / 2;
+                    float current_peak_val = curve_data[i];
+                    if (current_peak_val >= currentThreshold) {
+                        candidatePeakIdx = current_peak_idx;
+                        candidatePeakVal = current_peak_val;
+                        distLastPeak = 0;
+                        currentThreshold = current_peak_val;
+                    }
+                    i = i_ahead;
+                    continue;
+                }
+            }
+            if (candidatePeakIdx != -1) {
+                distLastPeak++;
+            }
+            if (distLastPeak == distance && candidatePeakIdx != -1) {
+                int ins_pos = N_peaks;
+                for (int j = 0; j < N_peaks; ++j) {
+                    if (candidatePeakVal > top_values[j]) {
+                        ins_pos = j;
+                        break;
+                    }
+                }
+                if (ins_pos < N_peaks) {
+                    for (int k = N_peaks - 1; k > ins_pos; --k) {
+                        top_indices[k] = top_indices[k - 1];
+                        top_values[k] = top_values[k - 1];
+                    }
+                    top_indices[ins_pos] = candidatePeakIdx;
+                    top_values[ins_pos] = candidatePeakVal;
+                }
+                distLastPeak = 0;
+                currentThreshold = threshold;
+                candidatePeakIdx = -1;
+                candidatePeakVal = -INFINITY;
+            }
+            i++;
+        }
+
+        // --- Save state for next chunk ---
+        state_candidate_idx[idx] = candidatePeakIdx;
+        state_candidate_val[idx] = candidatePeakVal;
+        state_distLastPeak[idx] = distLastPeak;
+        state_currentThreshold[idx] = currentThreshold;
+
+        // --- Write results from local arrays to global memory ---
+        for (int k = 0; k < N_peaks; ++k) {
+            curve_peak_indices_out[k] = top_indices[k];
+            curve_peak_values_out[k] = (top_indices[k] != -1) ? top_values[k] : 0.0f;
+        }
     }
 }

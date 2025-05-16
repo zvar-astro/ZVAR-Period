@@ -81,4 +81,22 @@ __global__ void cudaFindPeaks(
     float threshold //minimum significance for a peak to be considered
 );
 
+__global__ void cudaFindPeaksChunk(
+    float* data, //input data (N_dat * N_curves)
+    float* median, //medians (N_curves)
+    float* mad, //median absolute deviations (N_curves)
+    int* peakIndices, //output for peak indices (N_curves * Ntop)
+    float* peakValues, //output for peak significances (N_curves * Ntop)
+    int N_dat, //N_dat
+    int N_curves, //N_curves
+    int distance, //distance between peaks
+    float threshold, //minimum significance for a peak to be considered
+    int* state_candidate_idx, // store candidate indices when the chunk ends (N_curves)
+    float* state_candidate_val, // store candidate values when the chunk ends (N_curves)
+    int* state_distLastPeak, // store the distance to the last peak when the chunk ends (N_curves)
+    float* state_currentThreshold, // store the current threshold when the chunk ends (N_curves)
+    int chunk_start, // start of the chunk index
+    int chunk_end // end of the chunk index
+);
+
 #endif

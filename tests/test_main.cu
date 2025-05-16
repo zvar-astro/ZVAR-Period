@@ -69,6 +69,13 @@ TEST_CASE("FPW GPU vs CPU 20 Bin Periodogram Comparison", "[FPW]") {
         // Compute the mean and standard deviation of the difference
         auto [meanDiff, stdevDiff] = computeMeanAndStdDev(diff);
 
+        // Compute the maximum of the periodogram
+        float maxPeriodogram = *std::max_element(cpuPeriodogramFloat.begin(), cpuPeriodogramFloat.end());
+
+        //Print the mean and standard deviation of the difference
+        std::cout << "mean of the difference: " << meanDiff << std::endl;
+        std::cout << "std of the difference: " << stdevDiff << std::endl;
+
         // Assertions
         REQUIRE(meanDiff < 1.0f); // Mean of the difference should be less than 1
         REQUIRE(stdevDiff < stdevCPU); // Standard deviation of the difference should be less than that of the CPU periodogram
@@ -538,6 +545,192 @@ TEST_CASE("Check GPU Peak Finding vs CPU Timing", "[Statistics][Timing]") {
     }
 }
 
+TEST_CASE("Check Chunk Peak Finding VS Global", "[Statistics]") {
+    try {
+        // Read the frequency grid file
+        std::string fgridFile = "../tests/data/fgrid.csv";
+        std::vector<std::vector<double>> fgridData = readCSV(fgridFile);
+        std::vector<double> fgrid = extractColumn(fgridData, 0);
+        //convert to float
+        std::vector<float> fgridFloat(fgrid.size());
+        std::transform(fgrid.begin(), fgrid.end(), fgridFloat.begin(),
+                    [](double val) { return static_cast<float>(val); });
+
+        std::string expectedFile = "../tests/data/CPU_periodogram.csv";
+        std::vector<std::vector<double>> expectedData = readCSV(expectedFile);
+        std::vector<double> cpuPeriodogram = extractColumn(expectedData, 0);
+        // Convert to float
+        std::vector<float> cpuPeriodogramFloat(cpuPeriodogram.size());
+        std::transform(cpuPeriodogram.begin(), cpuPeriodogram.end(), cpuPeriodogramFloat.begin(),
+                    [](double val) { return static_cast<float>(val); });
+
+        const int N_dat = fgrid.size();
+        const int N_curves = 1; // Test with a single curve for simplicity
+
+        // --- Parameters ---
+        const int distance = 300;
+        const float threshold = 1.5f; // Significance threshold
+
+        // --- Calculate Median/MAD ---
+        float pgramMedian = median(cpuPeriodogramFloat.data(), N_dat);
+        float pgramMAD = mad(cpuPeriodogramFloat.data(), N_dat, pgramMedian);
+
+        // --- Allocate device memory ---
+        float *d_data, *d_median, *d_mad, *d_peakValues, *d_peakValues_chunk;
+        int *d_peakIndices, *d_peakIndices_chunk;
+        cudaMalloc(&d_data, N_dat * sizeof(float));
+        cudaMalloc(&d_median, sizeof(float));
+        cudaMalloc(&d_mad, sizeof(float));
+        cudaMalloc(&d_peakIndices, N_peaks * sizeof(int));
+        cudaMalloc(&d_peakValues, N_peaks * sizeof(float));
+        cudaMalloc(&d_peakIndices_chunk, N_peaks * sizeof(int));
+        cudaMalloc(&d_peakValues_chunk, N_peaks * sizeof(float));
+
+        // Copy data to device
+        cudaMemcpy(d_data, cpuPeriodogramFloat.data(), N_dat * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_median, &pgramMedian, sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_mad, &pgramMAD, sizeof(float), cudaMemcpyHostToDevice);
+
+        // --- Run global peak finding ---
+        cudaMemset(d_peakIndices, -1, N_peaks * sizeof(int));
+        cudaMemset(d_peakValues, 0, N_peaks * sizeof(float));
+        cudaFindPeaks<<<1, 1>>>(d_data, d_median, d_mad, d_peakIndices, d_peakValues, N_dat, N_curves, distance, threshold);
+
+        std::vector<int> global_peak_indices(N_peaks);
+        std::vector<float> global_peak_values(N_peaks);
+        cudaMemcpy(global_peak_indices.data(), d_peakIndices, N_peaks * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(global_peak_values.data(), d_peakValues, N_peaks * sizeof(float), cudaMemcpyDeviceToHost);
+
+        // --- Prepare for chunked peak finding ---
+        const int N_chunks = 5;
+        int chunk_size = (N_dat + N_chunks - 1) / N_chunks;
+
+        // Allocate persistent state arrays
+        int *d_state_candidate_idx, *d_state_distLastPeak;
+        float *d_state_candidate_val, *d_state_currentThreshold;
+        cudaMalloc(&d_state_candidate_idx, sizeof(int));
+        cudaMalloc(&d_state_candidate_val, sizeof(float));
+        cudaMalloc(&d_state_distLastPeak, sizeof(int));
+        cudaMalloc(&d_state_currentThreshold, sizeof(float));
+
+        // Initialize persistent state
+        int init_idx = -1;
+        float init_val = -INFINITY, init_thresh = threshold;
+        cudaMemcpy(d_state_candidate_idx, &init_idx, sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_state_candidate_val, &init_val, sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_state_currentThreshold, &init_thresh, sizeof(float), cudaMemcpyHostToDevice);
+
+        // Zero out chunk peak arrays
+        cudaMemset(d_peakIndices_chunk, -1, N_peaks * sizeof(int));
+        cudaMemset(d_peakValues_chunk, 0, N_peaks * sizeof(float));
+
+        // Copy data again for chunked version (since global version normalizes in-place)
+        cudaMemcpy(d_data, cpuPeriodogramFloat.data(), N_dat * sizeof(float), cudaMemcpyHostToDevice);
+
+        // Run chunked peak finding
+        for (int c = 0; c < N_chunks; ++c) {
+            int chunk_start = c * chunk_size;
+            int chunk_end = std::min((c + 1) * chunk_size, N_dat);
+            cudaFindPeaksChunk<<<1, 1>>>(
+                d_data, d_median, d_mad,
+                d_peakIndices_chunk, d_peakValues_chunk,
+                N_dat, N_curves, distance, threshold,
+                d_state_candidate_idx, d_state_candidate_val,
+                d_state_distLastPeak, d_state_currentThreshold,
+                chunk_start, chunk_end
+            );
+        }
+
+        std::vector<int> chunk_peak_indices(N_peaks);
+        std::vector<float> chunk_peak_values(N_peaks);
+        cudaMemcpy(chunk_peak_indices.data(), d_peakIndices_chunk, N_peaks * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(chunk_peak_values.data(), d_peakValues_chunk, N_peaks * sizeof(float), cudaMemcpyDeviceToHost);
+
+        // --- Compare results ---
+        for (int i = 0; i < N_peaks; ++i) {
+            REQUIRE(chunk_peak_indices[i] == global_peak_indices[i]);
+            REQUIRE(chunk_peak_values[i] == global_peak_values[i]);
+        }
+
+        // Free device memory
+        cudaFree(d_data);
+        cudaFree(d_median);
+        cudaFree(d_mad);
+        cudaFree(d_peakIndices);
+        cudaFree(d_peakValues);
+        cudaFree(d_peakIndices_chunk);
+        cudaFree(d_peakValues_chunk);
+        cudaFree(d_state_candidate_idx);
+        cudaFree(d_state_candidate_val);
+        cudaFree(d_state_distLastPeak);
+        cudaFree(d_state_currentThreshold);
+    }
+    catch (const std::exception& e) {
+        FAIL("Exception occurred: " << e.what());
+    }
+}
+
+TEST_CASE("Time Pre-Computing Vs Recursive Indices", "[FPW][Timing]") {
+    try {
+        std::string dataFile = "../tests/data/tydy.csv";
+        std::vector<std::vector<double>> data = readCSV(dataFile);
+
+        // Extract columns
+        std::vector<double> times = extractColumn(data, 0);
+
+        // Read the frequency grid file
+        std::string fgridFile = "../tests/data/fgrid.csv";
+        std::vector<std::vector<double>> fgridData = readCSV(fgridFile);
+        std::vector<double> fgrid = extractColumn(fgridData, 0);
+
+        // Convert to floats
+        std::vector<float> timesFloat(times.size());
+        std::vector<float> fgridFloat(fgrid.size());
+        std::transform(times.begin(), times.end(), timesFloat.begin(), [](double val) { return static_cast<float>(val); });
+        std::transform(fgrid.begin(), fgrid.end(), fgridFloat.begin(), [](double val) { return static_cast<float>(val); });
+
+        // Extract constants
+        int N_bins = 20;
+        int N_dat = timesFloat.size();
+        int N_freqs_batch = 100000;
+        int N_freqs = std::min((int)fgridFloat.size(), N_freqs_batch);
+
+        // --- Precompute indices on CPU and time transfer ---
+        std::vector<int> h_indices(N_freqs * N_dat);
+        unsigned char* d_indices = createIndices(timesFloat.data(), fgridFloat.data(), N_bins, N_dat, N_freqs);
+        cudaMemcpy(h_indices.data(), d_indices, N_freqs * N_dat * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+        cudaFree(d_indices);
+
+        auto start_transfer = std::chrono::high_resolution_clock::now();
+        unsigned char* d_indices_transfer;
+        cudaMalloc(&d_indices_transfer, N_freqs * N_dat * sizeof(unsigned char));
+        cudaMemcpy(d_indices_transfer, h_indices.data(), N_freqs * N_dat * sizeof(unsigned char), cudaMemcpyHostToDevice);
+        auto end_transfer = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> elapsed_transfer = end_transfer - start_transfer;
+        std::cout << "Time to transfer precomputed indices to device: " << elapsed_transfer.count() / N_freqs << " ms per frequency" << std::endl;
+        cudaFree(d_indices_transfer);
+
+        // --- Time computing indices directly on the GPU ---
+        auto start_compute = std::chrono::high_resolution_clock::now();
+        unsigned char* d_indices2 = createIndices(timesFloat.data(), fgridFloat.data(), N_bins, N_dat, N_freqs);
+        cudaFree(d_indices2);
+        auto end_compute = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> elapsed_compute = end_compute - start_compute;
+        std::cout << "Time to compute indices on device: " << elapsed_compute.count() / N_freqs << " ms per frequency" << std::endl;
+
+    } catch (const std::exception& e) {
+        FAIL("Exception occurred: " << e.what());
+    }
+}
+
+TEST_CASE("Check NVIDIA Device Parameters", "[Memory]") {
+    int device = 0;
+    int maxSharedMem = 0;
+    cudaDeviceGetAttribute(&maxSharedMem, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+
+    // Print the maximum shared memory size
+    std::cout << "Maximum shared memory size per block: " << maxSharedMem / 1024 << " KB" << std::endl;
+}
 
 /*
 TEST_CASE("Check GPUFit's Output", "[Statistics]") {

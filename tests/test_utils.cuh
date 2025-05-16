@@ -1,5 +1,6 @@
 #include "../src/processing.cuh"
 #include "../src/periodograms/FPW/wrappers.cuh"
+#include "../src/periodograms/FPW/kernels.cuh"
 #include "../src/statistics/peak_utils.h"
 #include "../src/statistics/polyfit.cuh"
 #include <iostream>
