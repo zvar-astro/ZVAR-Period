@@ -64,7 +64,7 @@ unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t N_ex
     return NCHUNK;
 }
 
-std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_t N_samples, size_t N_src, size_t N_freqs, size_t N_peaks, float percent_indices) {
+std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_t N_samples, size_t N_src, size_t N_freqs, size_t N_peaks, float percent_indices, size_t blockDimX, size_t blockDimY) {
     // Memory usage per element in bytes
     const size_t float_size = sizeof(float);
     const size_t int_size = sizeof(int);
@@ -73,7 +73,7 @@ std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_
     // Get total device memory
     size_t total_mem = getDeviceMemory(deviceNum);
     if (total_mem == 0) {
-        return 0; // Error in getting device memory
+        std::cerr << "Error: Could not get device memory information" << std::endl;
     }
 
     // Query available GPU memory
@@ -89,18 +89,17 @@ std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_
 
     // Let indices take up to percent_indices of the available memory
     size_t max_memory_indices = static_cast<size_t>(percent_indices * static_cast<float>(available_memory));
-    size_t N_freqs_batch_max = max_memory_indices / (N_dat * unsigned_char_size);
+    size_t N_freqs_per_batch_max = max_memory_indices / (N_dat * unsigned_char_size);
 
     // Make sure N_freqs_batch_max is not larger than N_freqs
-    size_t N_freqs_batch = std::min(N_freqs_batch_max, N_freqs);
+    size_t N_freqs_per_batch = std::min(N_freqs_per_batch_max, static_cast<size_t>(N_freqs));
 
     // Compute the actual memory usage of indices
-    size_t indices_memory = N_freqs_batch * N_dat * unsigned_char_size;
+    size_t indices_memory = N_freqs_per_batch * N_dat * unsigned_char_size;
 
     // assert that the indices memory is not larger than max_memory_indices
     if (indices_memory > max_memory_indices) {
         std::cerr << "Error: Indices memory exceeds maximum allowed memory" << std::endl;
-        return 0;
     }
 
     // Let the rest of the memory be used for the other arrays
@@ -109,7 +108,7 @@ std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_
     // Calculate how much memory each array needs PER SOURCE
     size_t y_memory = N_dat * float_size; // Memory for y
     size_t ivar_memory = N_dat * float_size; // Memory for 1/y^2
-    size_t periodogram_memory = N_freqs_batch * N_samples * float_size; // Memory for periodogram values
+    size_t periodogram_memory = N_freqs_per_batch * N_samples * float_size; // Memory for periodogram values
     size_t medians_memory = float_size;
     size_t mads_memory = float_size;
     size_t peak_indices_memory = N_peaks * int_size;
@@ -133,16 +132,27 @@ std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_
                                     state_currentThreshold_memory;
 
     // Calculate the maximum N_src_batch that fits in the available memory
-    size_t max_N_src_batch = source_data_memory / total_memory_per_curve;
-    if (max_N_src_batch == 0) {
+    size_t max_N_src_per_batch = source_data_memory / total_memory_per_curve;
+    if (max_N_src_per_batch == 0) {
         std::cerr << "Error: Not enough memory to allocate even a single curve batch" << std::endl;
-        return 0;
     }
 
     // Make sure N_src_batch is not larger than N_src
-    size_t N_src_batch = std::min(max_N_src_batch, N_src);
+    size_t N_src_per_batch = std::min(max_N_src_per_batch, static_cast<size_t>(N_src));
 
-    return std::make_pair(N_freqs_batch, N_src_batch);
+    // Get device properties to check grid size limits
+    cudaDeviceProp device_prop;
+    cudaGetDeviceProperties(&device_prop, deviceNum);
+
+    // Calculate max grid size in each dimension
+    size_t maxGridX = device_prop.maxGridSize[0] * blockDimX;
+    size_t maxGridY = device_prop.maxGridSize[1] * blockDimY;
+
+    // Clamp batch sizes to grid limits
+    N_freqs_per_batch = std::min(N_freqs_per_batch, maxGridX);
+    N_src_per_batch   = std::min(N_src_per_batch, maxGridY);
+
+    return std::make_pair(N_freqs_per_batch, N_src_per_batch);
 }
 
 

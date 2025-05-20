@@ -25,6 +25,6 @@ unsigned long calculateMaxCPUBatch(size_t N_freqs, size_t N_samples, size_t N_ex
 
 unsigned long calculateNChunkBaseline(int deviceNum, size_t N_src_per_chunk, size_t N_dat, int modelID);
 
-std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_t N_samples, size_t N_src, size_t N_freqs, size_t N_peaks, float percent_indices);
+std::pair<size_t, size_t> calculateGPUBatches(int deviceNum, size_t N_dat, size_t N_samples, size_t N_src, size_t N_freqs, size_t N_peaks, float percent_indices, size_t blockDimX, size_t blockDimY);
 
 #endif //MEMORY_MANAGERS_H

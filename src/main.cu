@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) {
     ProcessingExternalParams params(
         device,
         1, // num_omp_threads
+        0.5f, // percent_indices
         hdf_filename,
         logpath,
         output_dir,

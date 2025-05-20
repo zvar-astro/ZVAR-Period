@@ -85,49 +85,79 @@ void createAndFilterFrequencyGrid(
     }
 }
 
+// void initializeChunkParameters(const ProcessingExternalParams& params, FieldData& field_data) {
+//     try {
+//         //Decide how many CPU chunks to run based on memory
+//         unsigned long N_chunk = calculateMaxCPUBatch(field_data.N_freqs, params.N_samples, field_data.N_exp, field_data.N_src);
+//         unsigned long N_src_per_chunk = 1 + ((field_data.N_src-1) / N_chunk);
+
+//         // Decide how many GPU chunks to run based on memory
+//         const char* N_freq_batch_env = std::getenv("N_FREQ_BATCH");
+//         unsigned long N_freq_batch = (N_freq_batch_env != nullptr) ? std::stoul(N_freq_batch_env) : 100000;
+
+//         if (N_freq_batch == 0) {
+//             logMessage(params.log_path, "Error: N_FREQ_BATCH cannot be zero");
+//             field_data.success = false;
+//             return;
+//         }
+
+//         if (N_freq_batch > field_data.N_freqs) {
+//             // make it match the size of the frequency grid
+//             logMessage(params.log_path, "Warning: N_FREQ_BATCH is larger than the size of the frequency grid, setting it to " + std::to_string(field_data.N_freqs));
+//             N_freq_batch = field_data.N_freqs;
+//         }
+
+//         unsigned long N_src_batch = calculateMaxGPUBatch(params.device, field_data.N_exp, N_freq_batch, params.N_samples, N_src_per_chunk);
+
+//         if (N_src_batch == 0) {
+//             std::cerr << "Error: N_src_batch is zero, exiting" << std::endl;
+//             logMessage(params.log_path, "Error: N_src_batch is zero, exiting");
+//             field_data.success = false;
+//             return;
+//         }
+
+//         unsigned long N_chunk_baseline = calculateNChunkBaseline(params.device, N_src_per_chunk, field_data.N_exp, params.model_id);
+//         unsigned long N_src_per_chunk_baseline = 1 + ((N_src_per_chunk-1) / N_chunk_baseline); // ?
+
+//         field_data.N_freqs_batch_gpu_periodogram = N_freq_batch;
+//         field_data.N_src_batch_cpu = N_src_per_chunk;
+//         field_data.N_src_batch_gpu_periodogram = N_src_batch;
+//         field_data.N_batch_cpu = N_chunk;
+//         field_data.N_src_batch_gpu_baseline = N_src_per_chunk_baseline;
+//         field_data.N_batch_gpu_baseline = N_chunk_baseline;
+
+//         std::cout << "N_freq_batch: " << N_freq_batch << std::endl;
+//         std::cout << "N_src_batch: " << N_src_batch << std::endl;
+//     } catch (const std::exception& e) {
+//         logMessage(params.log_path, "Error initializing chunk parameters: " + std::string(e.what()));
+//         field_data.success = false;
+//         return;
+//     }
+// }
+
 void initializeChunkParameters(const ProcessingExternalParams& params, FieldData& field_data) {
     try {
-        //Decide how many CPU chunks to run based on memory
-        unsigned long N_chunk = calculateMaxCPUBatch(field_data.N_freqs, params.N_samples, field_data.N_exp, field_data.N_src);
-        unsigned long N_src_per_chunk = 1 + ((field_data.N_src-1) / N_chunk);
+        std::pair<size_t, size_t> gpu_batches = calculateGPUBatches(params.device, field_data.N_exp, params.N_samples, field_data.N_src, field_data.N_freqs, N_peaks, params.percent_indices, 32, 8);
 
-        // Decide how many GPU chunks to run based on memory
-        const char* N_freq_batch_env = std::getenv("N_FREQ_BATCH");
-        unsigned long N_freq_batch = (N_freq_batch_env != nullptr) ? std::stoul(N_freq_batch_env) : 100000;
+        unsigned long N_freqs_per_batch = static_cast<unsigned long>(gpu_batches.first);
+        unsigned long N_src_per_batch = static_cast<unsigned long>(gpu_batches.second);
 
-        if (N_freq_batch == 0) {
-            logMessage(params.log_path, "Error: N_FREQ_BATCH cannot be zero");
-            field_data.success = false;
-            return;
-        }
+        unsigned long N_freqs_batch = (field_data.N_freqs + N_freqs_per_batch - 1) / N_freqs_per_batch;
+        unsigned long N_src_batch = (field_data.N_src + N_src_per_batch - 1) / N_src_per_batch;
 
-        if (N_freq_batch > field_data.N_freqs) {
-            // make it match the size of the frequency grid
-            logMessage(params.log_path, "Warning: N_FREQ_BATCH is larger than the size of the frequency grid, setting it to " + std::to_string(field_data.N_freqs));
-            N_freq_batch = field_data.N_freqs;
-        }
+        unsigned long N_chunk_baseline = calculateNChunkBaseline(params.device, N_src_per_batch, field_data.N_exp, params.model_id);
+        unsigned long N_src_per_chunk_baseline = 1 + ((N_src_per_batch-1) / N_chunk_baseline);
 
-        unsigned long N_curves_batch = calculateMaxGPUBatch(params.device, field_data.N_exp, N_freq_batch, params.N_samples, N_src_per_chunk);
+        field_data.N_freqs_batch = N_freqs_batch;
+        field_data.N_src_batch = N_src_batch;
+        field_data.N_freqs_per_batch = N_freqs_per_batch;
+        field_data.N_src_per_batch = N_src_per_batch;
 
-        if (N_curves_batch == 0) {
-            std::cerr << "Error: N_curves_batch is zero, exiting" << std::endl;
-            logMessage(params.log_path, "Error: N_curves_batch is zero, exiting");
-            field_data.success = false;
-            return;
-        }
-
-        unsigned long N_chunk_baseline = calculateNChunkBaseline(params.device, N_src_per_chunk, field_data.N_exp, params.model_id);
-        unsigned long N_src_per_chunk_baseline = 1 + ((N_src_per_chunk-1) / N_chunk_baseline); // ?
-
-        field_data.N_freqs_batch_gpu_periodogram = N_freq_batch;
-        field_data.N_src_batch_cpu = N_src_per_chunk;
-        field_data.N_src_batch_gpu_periodogram = N_curves_batch;
-        field_data.N_batch_cpu = N_chunk;
         field_data.N_src_batch_gpu_baseline = N_src_per_chunk_baseline;
         field_data.N_batch_gpu_baseline = N_chunk_baseline;
 
-        std::cout << "N_freq_batch: " << N_freq_batch << std::endl;
-        std::cout << "N_curves_batch: " << N_curves_batch << std::endl;
+        std::cout << "Number of frequency batches: " << field_data.N_freqs_batch << std::endl;
+        std::cout << "Number of source batches: " << field_data.N_src_batch << std::endl;
     } catch (const std::exception& e) {
         logMessage(params.log_path, "Error initializing chunk parameters: " + std::string(e.what()));
         field_data.success = false;
@@ -160,7 +190,7 @@ void processBaselineRemoval(const ProcessingExternalParams& params, FieldData& f
     try{
         for (unsigned long l = 0; l < field_data.N_batch_gpu_baseline; l++) {
             unsigned long objstart_baseline = l * field_data.N_src_batch_gpu_baseline;
-            unsigned long objnum_baseline = (l < field_data.N_batch_gpu_baseline - 1) ? field_data.N_src_batch_gpu_baseline : (field_data.N_src_batch_cpu - objstart_baseline);
+            unsigned long objnum_baseline = (l < field_data.N_batch_gpu_baseline - 1) ? field_data.N_src_batch_gpu_baseline : (field_data.N_src_batch - objstart_baseline);
         
             // Call removeBaseline and store the result in a temporary vector
             std::vector<float> flux_no_baseline_chunk(objnum_baseline * field_data.N_exp, 0.0f);
@@ -539,20 +569,23 @@ void process(const ProcessingExternalParams& params) {
     logMessage(params.log_path, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
 
 
+
     // print how many sources we have in total, how many chunks we will run, how many sources per chunk
     // and how many exposures per source
     logMessage(params.log_path, 
         "Total sources: " + to_string(field_data.N_src) + 
-        ", Total chunks: " + to_string(field_data.N_batch_cpu) + 
-        ", Sources per chunk: " + to_string(field_data.N_src_batch_cpu) + 
+        ", Total source chunks: " + to_string(field_data.N_src_batch) + 
+        ", Sources per chunk: " + to_string(field_data.N_src_per_batch) + 
         ", Exposures per source: " + to_string(field_data.N_exp));
 
-    for (unsigned long k = 0; k < field_data.N_batch_cpu; k++) {
+    for (unsigned long k = 0; k < field_data.N_src_batch; k++) {
         auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
 
         // Get the range of objects to analyze
-        objstart_periodograms = k * field_data.N_src_batch_cpu;
-        unsigned long objnum_periodograms = (k < field_data.N_batch_cpu - 1) ? field_data.N_src_batch_cpu : (field_data.N_src - objstart_periodograms);
+        objstart_periodograms = k * field_data.N_src_per_batch;
+        unsigned long objnum_periodograms = (k < field_data.N_src_batch - 1)
+            ? field_data.N_src_per_batch
+            : (field_data.N_src - objstart_periodograms);
 
         // Load the flux and fluxerr values
         // TODO: pass the name of the flux and fluxerr columns as arguments (??? - Sam)
@@ -618,8 +651,8 @@ void process(const ProcessingExternalParams& params) {
         cudaMalloc(&device_medians, objnum_periodograms * sizeof(float)); // Allocate memory for GPU medians
         cudaMalloc(&device_mads, objnum_periodograms * sizeof(float));    // Allocate memory for GPU MADs
 
-        for (unsigned long i = 0; i < field_data.N_freqs; i += field_data.N_freqs_batch_gpu_periodogram) {
-            unsigned long N_freqs_current = std::min(field_data.N_freqs_batch_gpu_periodogram, field_data.N_freqs - i);
+        for (unsigned long i = 0; i < field_data.N_freqs; i += field_data.N_freqs_per_batch) {
+            unsigned long N_freqs_current = std::min(field_data.N_freqs_per_batch, field_data.N_freqs - i);
 
             // Compute indices for the current chunk
             unsigned char* device_indices_chunk = createIndices(field_data.times.data(), field_data.fgrid.data() + i, params.N_bins[0], field_data.N_exp, N_freqs_current);

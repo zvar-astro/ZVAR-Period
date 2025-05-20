@@ -66,11 +66,23 @@ TEST_CASE("FPW GPU vs CPU 20 Bin Periodogram Comparison", "[FPW]") {
         // Compute the mean and standard deviation of the CPU periodogram
         auto [meanCPU, stdevCPU] = computeMeanAndStdDev(cpuPeriodogramFloat);
 
+        auto [meanGPU, stdevGPU] = computeMeanAndStdDev(gpuPeriodogram);
+
         // Compute the mean and standard deviation of the difference
         auto [meanDiff, stdevDiff] = computeMeanAndStdDev(diff);
 
         // Compute the maximum of the periodogram
         float maxPeriodogram = *std::max_element(cpuPeriodogramFloat.begin(), cpuPeriodogramFloat.end());
+
+        //  Print the mean and standard deviation of both periodograms
+        std::cout << "mean of the CPU periodogram: " << meanCPU << std::endl;
+        std::cout << "std of the CPU periodogram: " << stdevCPU << std::endl;
+
+        std::cout << "mean of the GPU periodogram: " << meanGPU << std::endl;
+        std::cout << "std of the GPU periodogram: " << stdevGPU << std::endl;
+
+        // Print the maximum of the periodogram
+        std::cout << "max of the CPU periodogram: " << maxPeriodogram << std::endl;
 
         //Print the mean and standard deviation of the difference
         std::cout << "mean of the difference: " << meanDiff << std::endl;

@@ -27,6 +27,7 @@ struct ProcessingExternalParams {
     // Hardware/Concurrency
     int device = 0; // Default GPU device
     int num_omp_threads = 1; // Default OpenMP threads
+    float percent_indices = 0.5f; // Default percentage of indices to use
 
     // File/Directory Names
     std::string input_hdf_filename;
@@ -62,6 +63,7 @@ struct ProcessingExternalParams {
     ProcessingExternalParams(
         int device = 0,
         int num_omp_threads = 1,
+        float percent_indices = 0.5f,
         const std::string& input_hdf_filename = "",
         const std::string& log_path = "",
         const std::string& output_dir = "",
@@ -102,20 +104,18 @@ struct ProcessingExternalParams {
 };
 
 struct FieldData {
-    unsigned int N_exp;
-    unsigned int N_src;
     std::vector<float> times;
     std::vector<unsigned char> dd_indices;
     std::vector<float> fgrid;
+    unsigned int N_exp;
+    unsigned int N_src;
     unsigned long N_freqs;
-    unsigned long N_src_batch_cpu;
-    unsigned long N_batch_cpu;
-    unsigned long N_src_batch_gpu_periodogram;
-    unsigned long N_freqs_batch_gpu_periodogram;
+    unsigned long N_freqs_batch;
+    unsigned long N_freqs_per_batch;
+    unsigned long N_src_batch;
+    unsigned long N_src_per_batch; 
     unsigned long N_src_batch_gpu_baseline;
     unsigned long N_batch_gpu_baseline;
-    unsigned long N_batch_gpu_postprocess;
-    unsigned long N_src_batch_gpu_postprocess;
     
     bool success = false; // To indicate if loading was successful
 };
@@ -131,13 +131,13 @@ struct SourcesData {
     bool success = false; // To indicate if loading was successful
 
     SourcesData(FieldData& field_data)
-        : psids(field_data.N_src_batch_cpu, 0),
-          ras(field_data.N_src_batch_cpu, 0.0f),
-          decs(field_data.N_src_batch_cpu, 0.0f),
-          ratioValid(field_data.N_src_batch_cpu, 0.0f),
-          fluxes(field_data.N_src_batch_cpu * field_data.N_exp, 0.0f),
-          fluxErrs(field_data.N_src_batch_cpu * field_data.N_exp, INFINITY),
-          fluxes_no_baseline(field_data.N_src_batch_cpu * field_data.N_exp, 0.0f) {}
+        : psids(field_data.N_src_per_batch, 0),
+          ras(field_data.N_src_per_batch, 0.0f),
+          decs(field_data.N_src_per_batch, 0.0f),
+          ratioValid(field_data.N_src_per_batch, 0.0f),
+          fluxes(field_data.N_src_per_batch * field_data.N_exp, 0.0f),
+          fluxErrs(field_data.N_src_per_batch * field_data.N_exp, INFINITY),
+          fluxes_no_baseline(field_data.N_src_per_batch * field_data.N_exp, 0.0f) {}
 };
 
 FieldData loadAndPrepareFieldData(const ProcessingExternalParams& params);
