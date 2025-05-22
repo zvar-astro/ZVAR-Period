@@ -136,12 +136,7 @@ std::string vectorToString(const std::vector<float>& vec) {
 void processTEST(const ProcessingExternalParams& params) {
 
     // --- Initialize Devices ---
-    omp_set_num_threads(params.num_omp_threads); // Set the number of threads for OpenMP
-
-    //Obtain the semaphore for the device
-    std::string semaphore_name = "/device_" + std::to_string(params.device) + "_lock";
-    const char* semaphore_name_char = semaphore_name.c_str();
-    sem_t* semaphore = openSemaphore(semaphore_name_char); // Open the semaphore
+    // omp_set_num_threads(params.num_omp_threads); // Set the number of threads for OpenMP
 
     auto start_full = chrono::high_resolution_clock::now(); //Time full run
     auto start_preprocess = chrono::high_resolution_clock::now(); //Time loading and pre-processing
@@ -153,14 +148,12 @@ void processTEST(const ProcessingExternalParams& params) {
 
     if (!field_data.success) {
         logMessage(params.log_path, "Failed to load field data. Exiting.");
-        closeSemaphore(semaphore, semaphore_name_char);
         exit(EXIT_FAILURE);
     }
 
     // If there are no exposures, skip the file
     if (field_data.N_exp == 0) {
         logMessage(params.log_path, "No exposures found in file, skipping");
-        closeSemaphore(semaphore, semaphore_name_char);
         return;
     }
 
@@ -169,7 +162,6 @@ void processTEST(const ProcessingExternalParams& params) {
 
     if(!field_data.success) {
         logMessage(params.log_path, "Failed to create frequency grid. Exiting.");
-        closeSemaphore(semaphore, semaphore_name_char);
         exit(EXIT_FAILURE);
     }
 
@@ -178,7 +170,6 @@ void processTEST(const ProcessingExternalParams& params) {
 
     if (!field_data.success) {
         logMessage(params.log_path, "Failed to initialize chunk parameters. Exiting.");
-        closeSemaphore(semaphore, semaphore_name_char);
         exit(EXIT_FAILURE);
     }
     
@@ -204,10 +195,11 @@ void processTEST(const ProcessingExternalParams& params) {
         ", Exposures per source: " + to_string(field_data.N_exp));
 
     // Readout for diagnostics
-    std::vector<float> periodogram_full(field_data.N_freqs * params.N_samples, 0.0f);
-    std::vector<float> lightcurve_full(field_data.N_exp, 0.0f);
+    std::vector<float> periodogram_full(field_data.N_freqs, 0.0f);
 
     for (unsigned long k = 1; k < 2; k++) {
+
+        std::cout << "Processing chunk " << k + 1 << " of " << field_data.N_src_batch << std::endl;
 
         auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
 
@@ -221,22 +213,18 @@ void processTEST(const ProcessingExternalParams& params) {
         // TODO: pass the name of the flux and fluxerr columns as arguments (??? - Sam)
         loadChunkData(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
 
+        std::cout << "Loaded chunk data for " << objnum_periodograms << " sources." << std::endl;
+
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
 
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
-        //Utilize a semaphore to prevent multiple threads from accessing the GPU at the same time
-        acquireSemaphore(semaphore);
-
-        logMessage(params.log_path, "Semaphore acquired for baseline removal in chunk: " + to_string(k));
 
         processBaselineRemoval(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
 
         if (!sources_data.success) {
             logMessage(params.log_path, "Failed to remove baseline. Exiting.");
-            releaseSemaphore(semaphore);
-            closeSemaphore(semaphore, semaphore_name_char);
             exit(EXIT_FAILURE);
         }
 
@@ -246,7 +234,6 @@ void processTEST(const ProcessingExternalParams& params) {
             exit(EXIT_FAILURE);
         }
 
-        releaseSemaphore(semaphore);
 
         auto stop_removebaseline = chrono::high_resolution_clock::now();
         auto duration_removebaseline = chrono::duration_cast<chrono::milliseconds>(stop_removebaseline - start_removebaseline);
@@ -272,6 +259,8 @@ void processTEST(const ProcessingExternalParams& params) {
         cudaMemsetAsync(d_peak_indices, -1, objnum_periodograms * params.N_samples * N_peaks * sizeof(int));
         cudaMemsetAsync(d_peak_values, -INFINITY, objnum_periodograms * params.N_samples * N_peaks * sizeof(float));
 
+        std::cout << "Allocated device memory for persistent state." << std::endl;
+
         int threadsPerBlock = 256;
         dim3 blockSizePostprocess(threadsPerBlock);
         dim3 gridSizePostprocess((objnum_periodograms * params.N_samples + threadsPerBlock - 1) / threadsPerBlock);
@@ -282,35 +271,54 @@ void processTEST(const ProcessingExternalParams& params) {
         cudaMalloc(&device_mads, objnum_periodograms * sizeof(float));    // Allocate memory for GPU MADs
 
         // SAVE LIGHTCURVES FOR DIAGNOSTICS ---
-        unsigned long last_src_global = field_data.N_src - 1;
-        unsigned long last_src_local = last_src_global - objstart_periodograms;
+        unsigned long last_src_global = objstart_periodograms + objnum_periodograms - 1;
+        unsigned long last_src_local = objnum_periodograms - 1;
 
-        // Copy the light curve for this source
         std::vector<float> lightcurve(field_data.N_exp, 0.0f);
-        std::copy(
-            sources_data.fluxes.begin() + last_src_local * field_data.N_exp,
-            sources_data.fluxes.begin() + (last_src_local + 1) * field_data.N_exp,
-            lightcurve.begin()
-        );
         std::vector<float> lightcurve_no_baseline(field_data.N_exp, 0.0f);
-        std::copy(
-            sources_data.fluxes_no_baseline.begin() + last_src_local * field_data.N_exp,
-            sources_data.fluxes_no_baseline.begin() + (last_src_local + 1) * field_data.N_exp,
-            lightcurve_no_baseline.begin()
-        );
         std::vector<float> lightcurve_errors(field_data.N_exp, 0.0f);
-        std::copy(
-            sources_data.fluxErrs.begin() + last_src_local * field_data.N_exp,
-            sources_data.fluxErrs.begin() + (last_src_local + 1) * field_data.N_exp,
-            lightcurve_errors.begin()
-        );
 
+        if (last_src_local < objnum_periodograms) {
+            std::copy(
+                sources_data.fluxes.begin() + last_src_local * field_data.N_exp,
+                sources_data.fluxes.begin() + (last_src_local + 1) * field_data.N_exp,
+                lightcurve.begin()
+            );
+            std::copy(
+                sources_data.fluxes_no_baseline.begin() + last_src_local * field_data.N_exp,
+                sources_data.fluxes_no_baseline.begin() + (last_src_local + 1) * field_data.N_exp,
+                lightcurve_no_baseline.begin()
+            );
+            std::copy(
+                sources_data.fluxErrs.begin() + last_src_local * field_data.N_exp,
+                sources_data.fluxErrs.begin() + (last_src_local + 1) * field_data.N_exp,
+                lightcurve_errors.begin()
+            );
+
+        std::cout << "Saved lightcurve for last source." << std::endl;
+        } else {
+            std::cerr << "last_src_local (" << last_src_local << ") is out of bounds for objnum_periodograms (" << objnum_periodograms << ")" << std::endl;
+        }
+
+        // Time the frequency loop
+
+        auto start_freqloop = chrono::high_resolution_clock::now(); // Time frequency loop
+
+        unsigned long freq_offset = 0;
         for (unsigned long i = 0; i < field_data.N_freqs; i += field_data.N_freqs_per_batch) {
             unsigned long N_freqs_current = std::min(field_data.N_freqs_per_batch, field_data.N_freqs - i);
 
             // Compute indices for the current chunk
             unsigned char* device_indices_chunk = createIndices(field_data.times.data(), field_data.fgrid.data() + i, params.N_bins[0], field_data.N_exp, N_freqs_current);
             cudaDeviceSynchronize();
+
+            //Print the length of sources_data.fluxes_no_baseline
+            std::cout << "Length of sources_data.fluxes_no_baseline: " << sources_data.fluxes_no_baseline.size() << std::endl;
+            std::cout << "Length of sources_data.fluxErrs: " << sources_data.fluxErrs.size() << std::endl;
+            std::cout << "objnum_periodograms: " << objnum_periodograms << std::endl;
+            std::cout << "N_freqs_current: " << N_freqs_current << std::endl;
+            std::cout << "N_src_per_batch: " << field_data.N_src_per_batch << std::endl;
+            std::cout << "N_samples: " << params.N_samples << std::endl;
 
             //Compute the periodograms for the current chunk
             float* device_periodogram_chunk = runFPWChunk(device_indices_chunk,
@@ -332,8 +340,8 @@ void processTEST(const ProcessingExternalParams& params) {
             );
 
             // Place into the full periodogram array
-            for (unsigned long f = 0; f < N_freqs_current * params.N_samples; ++f) {
-                periodogram[freq_offset * params.N_samples + f] = chunk_periodogram[f];
+            for (unsigned long f = 0; f < N_freqs_current; ++f) {
+                periodogram_full[freq_offset + f] = chunk_periodogram[f];
             }
             freq_offset += N_freqs_current;
 
@@ -367,19 +375,20 @@ void processTEST(const ProcessingExternalParams& params) {
             cudaFree(device_periodogram_chunk);
         }
 
+        // Finish timing the frequency loop
+        auto stop_freqloop = chrono::high_resolution_clock::now();
+        auto duration_freqloop = chrono::duration_cast<chrono::milliseconds>(stop_freqloop - start_freqloop);
+        logMessage(params.log_path, "Time for frequency loop: " + to_string(duration_freqloop.count()) + " milliseconds");
+
         std::ofstream pgram_out("periodogram_last_source.csv");
         for (unsigned long f = 0; f < field_data.N_freqs; ++f) {
-            for (int s = 0; s < params.N_samples; ++s) {
-                pgram_out << periodogram[f * params.N_samples + s];
-                if (s < params.N_samples - 1) pgram_out << ",";
-            }
-            pgram_out << "\n";
+            pgram_out << field_data.fgrid[f] << periodogram_full[f] << "\n";
         }
         pgram_out.close();
 
         std::ofstream lc_out("lightcurve_last_source.csv");
         for (unsigned long e = 0; e < field_data.N_exp; ++e) {
-            lc_out << lightcurve[e] << "\n";
+            lc_out << field_data.times[e] << ", " << lightcurve[e] << ", " << lightcurve_no_baseline[e] << ", " << lightcurve_errors[e] <<  "\n";
         }
         lc_out.close();
 
@@ -433,22 +442,20 @@ void processTEST(const ProcessingExternalParams& params) {
 
     }
 
-    closeSemaphore(semaphore, semaphore_name_char);
-
     auto stop_full = chrono::high_resolution_clock::now();
     auto duration_full = chrono::duration_cast<chrono::seconds>(stop_full - start_full);
     logMessage(params.log_path, "Time for full run: " + to_string(duration_full.count()) + " seconds");
     cout << "matchfile " << params.input_hdf_filename << " finished in " << duration_full.count() << " seconds" << endl;
 
     // rename the results file to remove the .temp extension
-    string final_results_filename = results_filename;
-    // remove the last 5 characters (.temp) from the filename
-    final_results_filename = final_results_filename.substr(0, final_results_filename.size() - 5);
-    string rename_command = "mv " + results_filename + " " + final_results_filename;
-    int rename_status = system(rename_command.c_str());
-    if (rename_status != 0) {
-        logMessage(params.log_path, "Error renaming results file: " + std::to_string(rename_status));
-    } else {
-        logMessage(params.log_path, "Results written to: " + final_results_filename);
-    }
+    // string final_results_filename = results_filename;
+    // // remove the last 5 characters (.temp) from the filename
+    // final_results_filename = final_results_filename.substr(0, final_results_filename.size() - 5);
+    // string rename_command = "mv " + results_filename + " " + final_results_filename;
+    // int rename_status = system(rename_command.c_str());
+    // if (rename_status != 0) {
+    //     logMessage(params.log_path, "Error renaming results file: " + std::to_string(rename_status));
+    // } else {
+    //     logMessage(params.log_path, "Results written to: " + final_results_filename);
+    // }
 }

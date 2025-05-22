@@ -20,7 +20,7 @@ find_package(HDF5 REQUIRED COMPONENTS CXX)
 include_directories(${HDF5_INCLUDE_DIRS})
 
 #Add Catch2 subdirectory
-add_subdirectory($ENV{CATCH2_DIR} Catch2-build)
+# add_subdirectory($ENV{CATCH2_DIR} Catch2-build)
 
 # Add the executable
 add_executable(cudaFPW main.cu
@@ -39,10 +39,18 @@ add_executable(cudaFPW main.cu
 
 add_executable(tests ../tests/test_main.cu
                ../tests/test_utils.cu
-               periodograms/FPW/wrappers.cu
-               periodograms/FPW/kernels.cu
+               periodograms/frequencyGrid.cpp
+               periodograms/FPW/kernels.cu 
+               periodograms/FPW/wrappers.cu 
+               statistics/polyfit.cu
+               statistics/curve_statistics.cu
                statistics/peak_utils.cu
-               statistics/polyfit.cu)
+               readwrite/hdf5_utils.cpp
+               msc/diagnostics.cpp
+               msc/semaphores.cpp
+               msc/memory_managers.cu
+               processing.cu
+               )
 
 # Specify the CUDA standard
 set(CMAKE_BUILD_TYPE Release)
@@ -52,7 +60,9 @@ set_property(TARGET cudaFPW
 
 # Link CUDA and cuRAND libraries
 target_link_libraries(cudaFPW PRIVATE ${CUDA_LIBRARIES} ${CUDA_curand_LIBRARY})
+target_link_libraries(tests PRIVATE ${CUDA_LIBRARIES} ${CUDA_curand_LIBRARY})
 target_link_libraries(cudaFPW PRIVATE ${HDF5_LIBRARIES})
+target_link_libraries(tests PRIVATE ${HDF5_LIBRARIES})
 
 target_link_libraries(tests PRIVATE ${CUDA_LIBRARIES} ${CUDA_curand_LIBRARY})
 
@@ -69,13 +79,21 @@ target_link_libraries(tests PRIVATE $ENV{GPUFIT_LIB_DIR}/libGpufit.so)
 if(OpenMP_CXX_FOUND)
     target_compile_options(cudaFPW PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>)
     target_link_libraries(cudaFPW PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(tests PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
+target_include_directories(tests PRIVATE $ENV{CATCH2_DIR}/src)
+target_link_libraries(tests PRIVATE
+    $ENV{CATCH2_DIR}/Catch2-release/src/libCatch2Main.a
+    $ENV{CATCH2_DIR}/Catch2-release/src/libCatch2.a
+)
+
 # Link Catch2 to the test executable
-target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
-target_include_directories(tests PRIVATE $ENV{CATCH2_DIR}/../src)
+# target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
+# target_link_libraries(tests PRIVATE ${CATCH2_DIR}/Catch2-build/src/libCatch2Main.a)
+# target_include_directories(tests PRIVATE $ENV{CATCH2_DIR}/../src)
 
 # Add optimization flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3")
-# set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -G -lineinfo")
+# set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -G")

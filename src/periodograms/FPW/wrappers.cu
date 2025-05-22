@@ -4,7 +4,7 @@ unsigned char* createIndices(const float* times, const float* freqs, const int N
 
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
-        std::cerr << "unexpected CUDA error (wrappers): " << cudaGetErrorString(error) << std::endl;
+        std::cerr << "unexpected CUDA error (indices): " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -45,7 +45,10 @@ unsigned char* createIndices(const float* times, const float* freqs, const int N
     }
 
     dim3 blockSizeInd(16, 16);  // Use a 2D array of threads in each block
-    dim3 gridSizeInd((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs + blockSizeInd.y - 1) / blockSizeInd.y);
+    // dim3 gridSizeInd((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs + blockSizeInd.y - 1) / blockSizeInd.y);
+    dim3 gridSizeInd((N_freqs + blockSizeInd.x - 1) / blockSizeInd.x, (N_dat + blockSizeInd.y - 1) / blockSizeInd.y);
+
+    std::cout << "Grid size: " << gridSizeInd.x << " " << gridSizeInd.y << std::endl;
 
     cudaMakeIndices<<<gridSizeInd, blockSizeInd>>>(times_device, freqs_device, indices_device, N_bins, N_dat, N_freqs);
 
@@ -66,11 +69,6 @@ unsigned char* createIndices(const float* times, const float* freqs, const int N
 }
 
 float* runFPWChunk(unsigned char* indices_device, float* y_host, float* dy_host, int N_dat, unsigned long N_src, unsigned long N_freqs, const int* N_bins, int N_samples) {
-
-    int N_bins_total = 0;
-    for (int i = 0; i < N_samples; i++) {
-        N_bins_total += N_bins[i];
-    }
 
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
@@ -106,6 +104,9 @@ float* runFPWChunk(unsigned char* indices_device, float* y_host, float* dy_host,
         exit(EXIT_FAILURE);
     }
 
+    //Print the size of periodograms_device
+    std::cout << "Size of periodograms_device: " << N_freqs * N_src * N_samples << std::endl;
+
     // Copy data from host to device
     error = cudaMemcpy(N_bins_device, N_bins, N_samples * sizeof(int), cudaMemcpyHostToDevice);
     if (error != cudaSuccess) {
@@ -118,11 +119,9 @@ float* runFPWChunk(unsigned char* indices_device, float* y_host, float* dy_host,
     dim3 gridSizeChi((N_freqs + blockSizeChi.x - 1) / blockSizeChi.x, (N_src + blockSizeChi.y - 1) / blockSizeChi.y);
     size_t sharedMemoryChi = 2 * N_bins[0] * blockSizeChi.x * blockSizeChi.y * sizeof(float);
 
-    // Allocate memory for host array to hold the result
-    float* deltaChi_host = new float[N_src * N_freqs * N_samples];
-
-    // Create a matrix to store the periodograms for each light curve
-    std::vector<float> periodograms(N_src * N_freqs * N_samples);
+    //print the size of the grid
+    std::cout << "Grid size: " << gridSizeChi.x << " " << gridSizeChi.y << std::endl;
+    std::cout << "Shared memory size: " << sharedMemoryChi / (1024.0) << " KB" << std::endl;
 
     // Copy y and ivar to device
     float* ivar_host = new float[N_dat * N_src];
@@ -147,14 +146,31 @@ float* runFPWChunk(unsigned char* indices_device, float* y_host, float* dy_host,
         exit(EXIT_FAILURE);
     }
 
+    cudaDeviceSynchronize();
+
     error = cudaGetLastError();
     if (error != cudaSuccess) {
         std::cerr << "CUDA error BEFORE cudaDeltaChi2Multibin (wrappers): " << cudaGetErrorString(error) << std::endl;
         exit(EXIT_FAILURE);
     }
 
+    // Check how much memory is allocated
+    size_t freeMem, totalMem;
+    error = cudaMemGetInfo(&freeMem, &totalMem);
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error in cudaMemGetInfo: " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Print the fraction of used memory
+
+    std::cout << "Used memory: " << (totalMem - freeMem) / (1024.0 * 1024.0) << " MB" << std::endl;
+    std::cout << "Used Fraction: " << (static_cast<double>(totalMem - freeMem) / static_cast<double>(totalMem)) * 100.0 << " %" << std::endl;
+
     cudaDeltaChi2Multibin<<<gridSizeChi, blockSizeChi, sharedMemoryChi>>>(
-                            y_device, ivar_device, indices_device, periodograms_device, N_bins_device, N_dat, N_freqs, N_src, N_samples, N_bins_total);
+                            y_device, ivar_device, indices_device, periodograms_device, N_bins_device, N_dat, N_freqs, N_src, N_samples);
+
+    cudaDeviceSynchronize();
 
     error = cudaGetLastError();
     if (error != cudaSuccess) {
@@ -192,11 +208,6 @@ The following values must be factors of N_bins[0]. N_samples is then the length 
 std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, float* freqs_host,
                     int N_dat, unsigned long N_curves, unsigned long N_freqs,
                     const int* N_bins, unsigned long N_freqs_batch, unsigned long N_src_batch, int N_samples) {
-
-    int N_bins_total = 0;
-    for (int i = 0; i < N_samples; i++) {
-        N_bins_total += N_bins[i];
-    }
 
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
@@ -264,7 +275,8 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
 
     // Define block size and grid size for kernel launches
     dim3 blockSizeInd(16, 16);  // Use a 2D array of threads in each block
-    dim3 gridSizeInd((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs_batch + blockSizeInd.y - 1) / blockSizeInd.y);
+    // dim3 gridSizeInd((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs_batch + blockSizeInd.y - 1) / blockSizeInd.y);
+    dim3 gridSizeInd((N_freqs_batch + blockSizeInd.x - 1) / blockSizeInd.x, (N_dat + blockSizeInd.y - 1) / blockSizeInd.y);
     dim3 blockSizeChi(32, 8);  // Use a 2D array of threads in each block
     dim3 gridSizeChi((N_freqs_batch + blockSizeChi.x - 1) / blockSizeChi.x, (N_src_batch + blockSizeChi.y - 1) / blockSizeChi.y);
     size_t sharedMemoryChi = 2 * N_bins[0] * blockSizeChi.x * blockSizeChi.y * sizeof(float);
@@ -292,7 +304,8 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
             exit(EXIT_FAILURE);
         }
 
-        dim3 gridSizeInd_current((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs_current + blockSizeInd.y - 1) / blockSizeInd.y);
+        // dim3 gridSizeInd_current((N_dat + blockSizeInd.x - 1) / blockSizeInd.x, (N_freqs_current + blockSizeInd.y - 1) / blockSizeInd.y);
+        dim3 gridSizeInd_current((N_freqs_current + blockSizeInd.x - 1) / blockSizeInd.x, (N_dat + blockSizeInd.y - 1) / blockSizeInd.y);
 
         cudaMakeIndices<<<gridSizeInd_current, blockSizeInd>>>(t, freqs, indices, N_bins[0], N_dat, N_freqs_current);
 
@@ -329,7 +342,7 @@ std::vector<float> cudaRunFPW(float* t_host, float* y_host, float* dy_host, floa
             }
 
             cudaDeltaChi2Multibin<<<gridSizeChi, blockSizeChi, sharedMemoryChi>>>(
-                                    y, ivar, indices, deltaChiArr, N_bins_device, N_dat, N_freqs_current, N_curves_current, N_samples, N_bins_total);
+                                    y, ivar, indices, deltaChiArr, N_bins_device, N_dat, N_freqs_current, N_curves_current, N_samples);
 
             error = cudaGetLastError();
             if (error != cudaSuccess) {

@@ -189,8 +189,8 @@ float* removeBaseline(float* times, float* y, float* dy, int N_dat, int N_curves
             for (int j = 0; j < N_dat; ++j) {
                 float y_model = 0;
                 for (int k = 0; k < N_parameters; ++k) {
-                    // y_model += output_parameters[i * N_parameters + k] * pow(times[j], N_parameters - 1 - k) / pow(t_max, N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
-                    y_model += output_parameters[i * N_parameters + k] * pow(times_fractional[j], N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
+                    y_model += output_parameters[i * N_parameters + k] * pow(times[j], N_parameters - 1 - k) / pow(t_max, N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
+                    // y_model += output_parameters[i * N_parameters + k] * pow(times_fractional[j], N_parameters - 1 - k); // Rescale model parameters by t_max since we divided times by t_max
                 }
                 y_no_baseline[i * N_dat + j] = y[i * N_dat + j] - y_model;
             }

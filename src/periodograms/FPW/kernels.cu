@@ -2,8 +2,8 @@
 
 __global__ void cudaMakeIndices(const float* times, const float* freqs, unsigned char* indices, 
                                     const int N_bins, const int N_dat, const int N_freqs) {
-    int timeIdx = threadIdx.x + blockIdx.x * blockDim.x;
-    int freqIdx = threadIdx.y + blockIdx.y * blockDim.y;
+    int freqIdx = threadIdx.x + blockIdx.x * blockDim.x;
+    int timeIdx = threadIdx.y + blockIdx.y * blockDim.y;
 
     if (timeIdx < N_dat && freqIdx < N_freqs) {
         float tf = times[timeIdx] * freqs[freqIdx];
@@ -50,11 +50,11 @@ __global__ void cudaDeltaChi2(float* y, float* ivar, unsigned char* indices, flo
 
 
 __global__ void cudaDeltaChi2Multibin(float* y, float* ivar, const unsigned char* indices, float* deltaChiArr,
-                                      int* N_bins, int N_dat, int N_freqs, int N_curves, int N_samples, int N_bins_total) {
+                                      int* N_bins, int N_dat, int N_freqs, int N_curves, int N_samples) {
 
-    int freqAddress = threadIdx.x;
-    int curveAddress = N_bins[0] * blockDim.x * threadIdx.y;
-    int dataAddress = curveAddress + freqAddress;
+    size_t freqAddress = threadIdx.x;
+    size_t curveAddress = N_bins[0] * blockDim.x * threadIdx.y;
+    size_t dataAddress = curveAddress + freqAddress;
 
     // Allocate shared memory for the intermediate arrays
     extern __shared__ float sharedMemory[];
@@ -67,14 +67,13 @@ __global__ void cudaDeltaChi2Multibin(float* y, float* ivar, const unsigned char
         ytCinvVShared[i * blockDim.x + dataAddress] = 0.0f;
     }
     
-    int freq = threadIdx.x + blockIdx.x * blockDim.x;
-    int curve = threadIdx.y + blockIdx.y * blockDim.y;
+    size_t freq = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t curve = threadIdx.y + blockIdx.y * blockDim.y;
 
-    if (freq < N_freqs && curve < N_curves) {
+    if (freq < (size_t)N_freqs && curve < (size_t)N_curves) {
         // Update acc and ytCinvV for the maximum number of bins
-        for (int i = 0; i < N_dat; i++) {
-            // int index = indices[i * N_freqs + freq];  // Coalesced access
-            int index = static_cast<int>(indices[freq * N_dat + i]);  // Coalesced access, now using unsigned char
+        for (size_t i = 0; i < (size_t)N_dat; i++) {
+            size_t index = static_cast<size_t>(indices[freq * N_dat + i]);  // Coalesced access, now using unsigned char
             float ivar_y = ivar[i + curve * N_dat] * y[i + curve * N_dat];  // Compute once and store in local memory
 
             accShared[index * blockDim.x + dataAddress] += ivar[i + curve * N_dat];
@@ -82,7 +81,7 @@ __global__ void cudaDeltaChi2Multibin(float* y, float* ivar, const unsigned char
         }
 
         // Calculate deltaChiArr
-        for (int i = 0; i < N_samples; i++) {
+        for (size_t i = 0; i < (size_t)N_samples; i++) {
             int downsampleFactor = N_bins[0] / N_bins[i];
             for (int j = 0; j < N_bins[i]; j++) {
                 float acc = 0.0f;
@@ -93,7 +92,8 @@ __global__ void cudaDeltaChi2Multibin(float* y, float* ivar, const unsigned char
                     ytCinvV += ytCinvVShared[index * blockDim.x + dataAddress];
                 }
                 float Minv = __fdividef(1.0f, 2.0f * acc);
-                deltaChiArr[freq + curve * N_freqs + i * N_curves * N_freqs] += ytCinvV * Minv * ytCinvV;
+                size_t idx = freq + curve * (size_t)N_freqs + i * (size_t)N_curves * (size_t)N_freqs;
+                deltaChiArr[idx] += ytCinvV * Minv * ytCinvV;
             }
         }
     }

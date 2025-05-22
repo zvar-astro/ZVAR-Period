@@ -40,4 +40,6 @@ std::pair<float, float> computeMedianAndMAD(std::vector<float>& data);
 // Function to convert a vector to a string for debugging
 std::string vectorToString(const std::vector<float>& vec);
 
+void processTEST(const ProcessingExternalParams& params);
+
 #endif // TEST_UTILS_CUH

@@ -14,6 +14,6 @@ __global__ void cudaDeltaChi2(float* y, float* ivar, unsigned char* indices, flo
                               int N_bins, int N_dat, int N_freqs, int N_curves);  
 
 __global__ void cudaDeltaChi2Multibin(float* y, float* ivar, const unsigned char* indices, float* deltaChiArr,
-                                      int* N_bins, int N_dat, int N_freqs, int N_curves, int N_samples, int N_bins_total);
+                                      int* N_bins, int N_dat, int N_freqs, int N_curves, int N_samples);
 
 #endif

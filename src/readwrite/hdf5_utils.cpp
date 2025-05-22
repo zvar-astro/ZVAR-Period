@@ -137,7 +137,7 @@ int get_exposures(hid_t table, double *bjd, int begin, int N, const char *field_
   - 0 on success
   - -1 on error
   */
-
+    std::cout << "field_name: " << field_name << std::endl;
   // Create the HDF5 compound datatype for exposures
   hid_t exposures_tid = H5Tcreate(H5T_COMPOUND, sizeof(exposures));
   if (exposures_tid < 0)
