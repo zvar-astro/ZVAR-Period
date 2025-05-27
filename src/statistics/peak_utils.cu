@@ -134,7 +134,7 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
     N_dat = number of data points in each curve
     N_curves = number of curves
     */
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N_curves) {
         // Pointer to the start of the curve data for this thread
@@ -478,7 +478,7 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
                               int* peakIndices, float* peakValues,
                               int N_dat, int N_curves, int distance, float threshold) {
 
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N_curves) {
         // Pointer to the start of the curve data for this thread
@@ -504,8 +504,8 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
         // --- End Step 1 ---
 
         // --- Step 2: Find peaks using threshold pivot and manage top N ---
-        int i = 1; // Start from the second element
-        int i_max = N_dat - 1; // Go up to the second-to-last element
+        size_t i = 1; // Start from the second element
+        size_t i_max = N_dat - 1; // Go up to the second-to-last element
 
         int distLastPeak = distance; // Initialize to allow first peak
         float currentThreshold = threshold; // Start with base threshold
@@ -515,7 +515,7 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
         while (i < i_max) {
             // Check 1: Local maximum condition (potential peak start)
             if (curve_data[i] > curve_data[i - 1]) {
-                int i_ahead = i + 1;
+                size_t i_ahead = i + 1;
                 // Handle plateaus: find next different value
                 while (i_ahead < i_max && curve_data[i_ahead] == curve_data[i]) {
                     i_ahead++;
@@ -524,7 +524,7 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
                 // Check if it's a peak (next different value is lower)
                 if (i_ahead < i_max && curve_data[i_ahead] < curve_data[i]) {
                     // Potential peak found.
-                    int current_peak_idx = (i + i_ahead - 1) / 2; // Midpoint index
+                    int current_peak_idx = static_cast<int>((i + i_ahead - 1) / 2); // Midpoint index
                     float current_peak_val = curve_data[i]; // Value at start of plateau
 
                     // Check 2: Significance threshold and pivot
@@ -551,7 +551,7 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
             if (distLastPeak == distance && candidatePeakIdx != -1) {
                 // Insert the candidate peak into the sorted top_N list
                 int ins_pos = N_peaks;
-                for (int j = 0; j < N_peaks; ++j) {
+                for (size_t j = 0; j < N_peaks; ++j) {
                     if (candidatePeakVal > top_values[j]) {
                         ins_pos = j;
                         break;
@@ -580,7 +580,7 @@ __global__ void cudaFindPeaks(float* data, float* median, float* mad,
         // --- End Step 2 ---
 
         // --- Step 3: Write results from local arrays to global memory ---
-        for (int k = 0; k < N_peaks; ++k) {
+        for (size_t k = 0; k < N_peaks; ++k) {
             curve_peak_indices_out[k] = top_indices[k];
             // Use the actual S/N value if found, otherwise 0.0f
             curve_peak_values_out[k] = (top_indices[k] != -1) ? top_values[k] : 0.0f;
@@ -597,7 +597,7 @@ __global__ void cudaFindPeaksChunk(float* data, float* median, float* mad,
                                    int* state_distLastPeak, float* state_currentThreshold,
                                    int chunk_start, int chunk_end) {
         
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N_curves) {
         float* curve_data = data + idx * N_dat;
@@ -607,7 +607,7 @@ __global__ void cudaFindPeaksChunk(float* data, float* median, float* mad,
         // --- Load top N peaks from global memory ---
         int top_indices[N_peaks];
         float top_values[N_peaks];
-        for (int k = 0; k < N_peaks; ++k) {
+        for (size_t k = 0; k < N_peaks; ++k) {
             top_indices[k] = curve_peak_indices_out[k];
             top_values[k] = curve_peak_values_out[k];
         }
@@ -620,21 +620,21 @@ __global__ void cudaFindPeaksChunk(float* data, float* median, float* mad,
 
         float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f;
         // Only normalize the current chunk
-        for (int i = chunk_start; i < chunk_end; i++) {
+        for (size_t i = chunk_start; i < chunk_end; i++) {
             curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
         }
 
-        int i = max(chunk_start, 1);
-        int i_max = min(chunk_end, N_dat - 1);
+        size_t i = max(static_cast<size_t>(chunk_start), size_t(1));
+        size_t i_max = min(chunk_end, N_dat - 1);
 
         while (i < i_max) {
             if (curve_data[i] > curve_data[i - 1]) {
-                int i_ahead = i + 1;
+                size_t i_ahead = i + 1;
                 while (i_ahead < i_max && curve_data[i_ahead] == curve_data[i]) {
                     i_ahead++;
                 }
                 if (i_ahead < i_max && curve_data[i_ahead] < curve_data[i]) {
-                    int current_peak_idx = (i + i_ahead - 1) / 2;
+                    int current_peak_idx = static_cast<int>((i + i_ahead - 1) / 2);
                     float current_peak_val = curve_data[i];
                     if (current_peak_val >= currentThreshold) {
                         candidatePeakIdx = current_peak_idx;
@@ -651,7 +651,7 @@ __global__ void cudaFindPeaksChunk(float* data, float* median, float* mad,
             }
             if (distLastPeak == distance && candidatePeakIdx != -1) {
                 int ins_pos = N_peaks;
-                for (int j = 0; j < N_peaks; ++j) {
+                for (size_t j = 0; j < N_peaks; ++j) {
                     if (candidatePeakVal > top_values[j]) {
                         ins_pos = j;
                         break;
@@ -680,7 +680,7 @@ __global__ void cudaFindPeaksChunk(float* data, float* median, float* mad,
         state_currentThreshold[idx] = currentThreshold;
 
         // --- Write results from local arrays to global memory ---
-        for (int k = 0; k < N_peaks; ++k) {
+        for (size_t k = 0; k < N_peaks; ++k) {
             curve_peak_indices_out[k] = top_indices[k];
             curve_peak_values_out[k] = (top_indices[k] != -1) ? top_values[k] : 0.0f;
         }

@@ -754,7 +754,7 @@ TEST_CASE("Check Processing Output", "[Processing]") {
     std::string dec_field_name = "dec";
     std::string time_field_name = "bjd";
     std::string flux_field_name = "flux";
-    std::string fluxErr_field_name = "fluxErr";
+    std::string fluxErr_field_name = "flux_err";
     // if (datatype == "zforce") {
     //     time_field_name = "mjd";
     // }

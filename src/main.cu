@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
     string dec_field_name = datatype + "dec";
     string time_field_name = datatype + "hjd";
     string flux_field_name = datatype + "flux";
-    string fluxErr_field_name = datatype + "fluxErr";
+    string fluxErr_field_name = datatype + "flux_err";
     if (datatype == "zforce") {
         time_field_name = "mjd";
     }

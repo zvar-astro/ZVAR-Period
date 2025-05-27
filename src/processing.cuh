@@ -129,9 +129,16 @@ struct SourcesData {
     std::vector<float> fluxErrs;
     std::vector<float> fluxes_no_baseline;
     std::vector<float> flux_ivars;
+    std::vector<float> fluxes_medians;
+    std::vector<float> fluxes_mads;
+    std::vector<float> periodogram_medians;
+    std::vector<float> periodogram_mads;
+    std::vector<float> peak_indices;
+    std::vector<float> peak_freqs;
+    std::vector<float> peak_values;
     bool success = false; // To indicate if loading was successful
 
-    SourcesData(FieldData& field_data)
+    SourcesData(const ProcessingExternalParams params, FieldData& field_data)
         : psids(field_data.N_src_per_batch, 0),
           ras(field_data.N_src_per_batch, 0.0f),
           decs(field_data.N_src_per_batch, 0.0f),
@@ -139,10 +146,20 @@ struct SourcesData {
           fluxes(field_data.N_src_per_batch * field_data.N_exp, 0.0f),
           fluxErrs(field_data.N_src_per_batch * field_data.N_exp, INFINITY),
           fluxes_no_baseline(field_data.N_src_per_batch * field_data.N_exp, 0.0f),
-          flux_ivars(field_data.N_src_per_batch * field_data.N_exp, 0.0f) {}
+          flux_ivars(field_data.N_src_per_batch * field_data.N_exp, 0.0f),
+          fluxes_medians(field_data.N_src_per_batch, 0.0f),
+          fluxes_mads(field_data.N_src_per_batch, 0.0f),
+          periodogram_medians(field_data.N_src_per_batch * params.N_samples, 0.0f),
+          periodogram_mads(field_data.N_src_per_batch * params.N_samples, 0.0f),
+          peak_indices(field_data.N_src_per_batch * params.N_samples * N_peaks, -1),
+          peak_freqs(field_data.N_src_per_batch * params.N_samples * N_peaks, -1.0f),
+          peak_values(field_data.N_src_per_batch * params.N_samples * N_peaks, -INFINITY) {}
 };
 
 struct KernelLaunchParams {
+    dim3 block_size_preprocess;
+    dim3 grid_size_preprocess;
+
     dim3 block_size_indices;
     dim3 grid_size_indices;
 
@@ -154,13 +171,18 @@ struct KernelLaunchParams {
     dim3 grid_size_postprocess;
 
     KernelLaunchParams(const ProcessingExternalParams& params, FieldData& field_data)
-        : block_size_indices(32, 32),
+        : block_size_preprocess(256),
+          grid_size_preprocess((field_data.N_src_per_batch + block_size_preprocess.x - 1) / block_size_preprocess.x),
+          
+          block_size_indices(32, 32),
           grid_size_indices((field_data.N_freqs_per_batch + block_size_indices.x - 1) / block_size_indices.x,
                             (field_data.N_exp + block_size_indices.y - 1) / block_size_indices.y),
+
           block_size_deltaChi2(32, 8),
           grid_size_deltaChi2((field_data.N_freqs_per_batch + block_size_deltaChi2.x - 1) / block_size_deltaChi2.x,
                                 (field_data.N_src_per_batch + block_size_deltaChi2.y - 1) / block_size_deltaChi2.y),
           shared_memory_deltaChi2(2 * params.N_bins[0] * block_size_deltaChi2.x * block_size_deltaChi2.y * sizeof(float)),
+
           block_size_postprocess(256),
           grid_size_postprocess((field_data.N_src_per_batch * params.N_samples + block_size_postprocess.x - 1) / block_size_postprocess.x) {}
 };
@@ -169,12 +191,14 @@ struct DeviceArrays {
     float* t_device;
     float* y_device;
     float* ivar_device;
+    float* y_medians_device;
+    float* y_mads_device;
     unsigned char* indices_device;
     float* periodograms_device;
     float* freqs_device;
     int* N_bins_device;
-    float* medians_device;
-    float* mads_device;
+    float* periodogram_medians_device;
+    float* periodogram_mads_device;
     int* peak_indices_device;
     float* peak_values_device;
 
@@ -182,44 +206,67 @@ struct DeviceArrays {
         : t_device(nullptr),
           y_device(nullptr),
           ivar_device(nullptr),
+          y_medians_device(nullptr),
+          y_mads_device(nullptr),
           indices_device(nullptr),
           periodograms_device(nullptr),
           freqs_device(nullptr),
           N_bins_device(nullptr),
-          medians_device(nullptr),
-          mads_device(nullptr),
+          periodogram_medians_device(nullptr),
+          periodogram_mads_device(nullptr),
           peak_indices_device(nullptr),
           peak_values_device(nullptr) {
         cudaMalloc(&t_device, field_data.N_exp * sizeof(float));
         cudaMalloc(&y_device, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
+        cudaMalloc(&y_medians_device, field_data.N_src_per_batch * sizeof(float));
+        cudaMalloc(&y_mads_device, field_data.N_src_per_batch * sizeof(float));
         cudaMalloc(&ivar_device, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
         cudaMalloc(&indices_device, field_data.N_exp * field_data.N_freqs_per_batch * sizeof(unsigned char));
-        cudaMalloc(&periodograms_device, field_data.N_src_per_batch * field_data.N_freqs_per_batch * params.N_samples *  sizeof(float));
+        cudaMalloc(&periodograms_device, field_data.N_src_per_batch * field_data.N_freqs_per_batch * params.N_samples * sizeof(float));
         cudaMalloc(&freqs_device, field_data.N_freqs_per_batch * sizeof(float));
         cudaMalloc(&N_bins_device, params.N_samples * sizeof(int));
-        cudaMalloc(&medians_device, field_data.N_src_per_batch * sizeof(float));
-        cudaMalloc(&mads_device, field_data.N_src_per_batch * sizeof(float));
-        cudaMalloc(&peak_indices_device, field_data.N_src_per_batch * N_peaks * sizeof(int));
-        cudaMalloc(&peak_values_device, field_data.N_src_per_batch * N_peaks * sizeof(float));
+        cudaMalloc(&periodogram_medians_device, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMalloc(&periodogram_mads_device, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMalloc(&peak_indices_device, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
+        cudaMalloc(&peak_values_device, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
 
         cudaMemcpyAsync(t_device, field_data.times.data(), field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice); // copy the times over, this is only done once.
         cudaMemcpyAsync(N_bins_device, params.N_bins.data(), params.N_samples * sizeof(int), cudaMemcpyHostToDevice); // copy the N_bins over, this is only done once.
+
+        cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
+
+        //Check for errors
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA error during device memory allocation");
+        }
     }
     ~DeviceArrays() {
         // Free device memory here
         cudaFree(t_device);
         cudaFree(y_device);
         cudaFree(ivar_device);
+        cudaFree(y_medians_device);
+        cudaFree(y_mads_device);
         cudaFree(indices_device);
         cudaFree(periodograms_device);
         cudaFree(freqs_device);
         cudaFree(N_bins_device);
-        cudaFree(medians_device);
-        cudaFree(mads_device);
+        cudaFree(periodogram_medians_device);
+        cudaFree(periodogram_mads_device);
         cudaFree(peak_indices_device);
         cudaFree(peak_values_device);
+
+        // Check for errors
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA error during device memory deallocation");
+        }
     }
 };
+
 
 struct PeakPersistentArrays {
     int* state_candidate_idx;
@@ -242,6 +289,15 @@ struct PeakPersistentArrays {
         cudaMemsetAsync(state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
         cudaMemsetAsync(state_dist_last_peak, 0, field_data.N_src_per_batch * params.N_samples * sizeof(int));
         cudaMemsetAsync(state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+
+        cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
+
+        // Check for errors
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA error during peak persistent arrays allocation");
+        }
     }
     ~PeakPersistentArrays() {
         // Free device memory here
@@ -249,8 +305,16 @@ struct PeakPersistentArrays {
         cudaFree(state_candidate_vals);
         cudaFree(state_dist_last_peak);
         cudaFree(state_current_threshold);
+
+        // Check for errors
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA error during peak persistent arrays deallocation");
+        }
     }
 };
+
 
 FieldData loadAndPrepareFieldData(const ProcessingExternalParams& params);
 
@@ -261,8 +325,20 @@ void initializeChunkParameters(const ProcessingExternalParams& params, FieldData
 void loadChunkData(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data,
                    unsigned long objstart, unsigned long objnum);
 
+void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays,
+                    KernelLaunchParams& kernel_params, unsigned long objnum_periodograms);
+
 void processBaselineRemoval(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data,
                             unsigned long objstart, unsigned long objnum);
+
+void copyPhotToDevice(FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays, unsigned long objnum_periodograms);
+
+void copyPeaksToHost(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data,
+                     DeviceArrays& device_arrays, unsigned long objnum_periodograms);
+
+void resetStateArrays(PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data);
+
+void removeTempStatus(const ProcessingExternalParams& params, string results_filename);
 
 void process(const ProcessingExternalParams& params);
 

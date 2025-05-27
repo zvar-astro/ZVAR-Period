@@ -159,6 +159,59 @@ void loadChunkData(const ProcessingExternalParams& params, FieldData& field_data
     }
 }
 
+
+void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays, KernelLaunchParams& kernel_params, unsigned long objnum_periodograms) {
+
+    cudaError_t cudaStatus;
+    // Find the medians and MADS of the fluxes
+    //Use the device arrays to compute the medians and MADS
+    cudaMemcpy(device_arrays.y_device, sources_data.fluxes.data(), objnum_periodograms * field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice);
+
+    CudaComputeMedianandMAD<<<kernel_params.grid_size_preprocess,
+                            kernel_params.block_size_preprocess>>>(device_arrays.y_device,
+                                                                    device_arrays.y_medians_device,
+                                                                    device_arrays.y_mads_device,
+                                                                    field_data.N_exp,
+                                                                    static_cast<int>(objnum_periodograms));
+
+    cudaDeviceSynchronize(); // Ensure all operations are complete before proceeding
+
+    cudaStatus = cudaGetLastError();
+    if (cudaStatus != cudaSuccess) {
+        std::cerr << "CUDA error in CudaComputeMedianandMAD: " << cudaGetErrorString(cudaStatus) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Copy the medians and MADS back to the host
+    cudaMemcpy(sources_data.fluxes_medians.data(), device_arrays.y_medians_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(sources_data.fluxes_mads.data(), device_arrays.y_mads_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Median subtract the data and remove outliers based on the medians and MADS
+    for (unsigned long i = 0; i < objnum_periodograms; i++) {
+        float median = sources_data.fluxes_medians[i];
+        float mad = sources_data.fluxes_mads[i];
+
+        // print out the median and MAD for debugging
+        float std = 1.483 * mad; // MAD to STD conversion factor
+        for (unsigned long j = 0; j < field_data.N_exp; j++) {
+            float flux = sources_data.fluxes[i * field_data.N_exp + j] - median; // Subtract the median from the flux
+
+            // If the median subtracted flux is more than 5 std ABOVE from the median, set it to 0, error to infinity, and ivar to 0
+            if (flux > 5 * std) {
+                sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
+                sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
+                sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
+            } else { // Otherwise, set the flux to the median subtracted value
+                sources_data.fluxes[i * field_data.N_exp + j] = flux;
+            }
+        }
+    }
+    // Reset y_device since we use it again later.
+    cudaMemset(device_arrays.y_device, 0, objnum_periodograms * field_data.N_exp * sizeof(float));
+    cudaDeviceSynchronize(); // Ensure all operations are complete before proceeding
+}
+
+
 /**
  * @brief Processes baseline removal for the sources data
  * 
@@ -171,41 +224,102 @@ void loadChunkData(const ProcessingExternalParams& params, FieldData& field_data
  * @param objnum_periodograms The number of periodograms to process
  */
 void processBaselineRemoval(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data, unsigned long objstart_periodograms, unsigned long objnum_periodograms) {
+    try {
+        auto result = removeBaseline(
+            field_data.times.data(),
+            sources_data.fluxes.data(),
+            sources_data.fluxErrs.data(),
+            field_data.N_exp,
+            objnum_periodograms,
+            params.model_id);
 
-    // try{
-    //     for (unsigned long l = 0; l < field_data.N_batch_gpu_baseline; l++) {
-    //         unsigned long objstart_baseline = l * field_data.N_src_batch_gpu_baseline;
-    //         unsigned long objnum_baseline = (l < field_data.N_batch_gpu_baseline - 1) ? field_data.N_src_batch_gpu_baseline : (field_data.N_src_batch - objstart_baseline);
-        
-    //         // Call removeBaseline and store the result in a temporary vector
-    //         std::vector<float> flux_no_baseline_chunk(objnum_baseline * field_data.N_exp, 0.0f);
-    //         float* temp_chunk = removeBaseline(field_data.times.data(), 
-    //                                         sources_data.fluxes.data() + objstart_baseline * field_data.N_exp,
-    //                                         sources_data.fluxErrs.data() + objstart_baseline * field_data.N_exp,
-    //                                         field_data.N_exp, objnum_baseline,
-    //                                         params.model_id);
-        
-    //         // Copy the results from the temporary pointer to the vector
-    //         std::copy(temp_chunk, temp_chunk + (objnum_baseline * field_data.N_exp), flux_no_baseline_chunk.begin());
-    //         delete[] temp_chunk; // Free the temporary pointer returned by removeBaseline
-        
-    //         // Copy the chunk results into the main flux_no_baseline vector
-    //         for (unsigned long i = 0; i < objnum_baseline; i++) {
-    //             for (unsigned long j = 0; j < field_data.N_exp; j++) {
-    //                 sources_data.fluxes_no_baseline[(objstart_baseline + i) * field_data.N_exp + j] = flux_no_baseline_chunk[i * field_data.N_exp + j];
-    //             }
-    //         }
-    //     }
-    //     field_data.success = true; // Set success to true if baseline removal was successful
-    // } catch (const std::exception& e) {
-    //     logMessage(params.log_path, "Error in baseline removal: " + std::string(e.what()));
-    //     field_data.success = false;
-    //     return;
-    // }
-    sources_data.fluxes_no_baseline = sources_data.fluxes; // Copy the fluxes to the no_baseline vector
-    // field_data.success = true; // Set success to true if baseline removal was successful
+        float* temp_chunk = result.first; // Get the pointer to the fluxes with baseline removed
+        float fraction_failed = result.second; // Get the fraction of failures
+
+        // Copy directly into the correct place in sources_data.fluxes_no_baseline
+        std::copy(
+            temp_chunk,
+            temp_chunk + (objnum_periodograms * field_data.N_exp),
+            sources_data.fluxes_no_baseline.begin()
+        );
+        delete[] temp_chunk; // Free the temporary pointer returned by removeBaseline
+
+        logMessage(params.log_path, "Baseline removal completed for chunk starting at index " + std::to_string(objstart_periodograms) +
+            ". Fraction of curves failed: " + std::to_string(fraction_failed));
+
+        field_data.success = true; // Set success to true if baseline removal was successful
+    } catch (const std::exception& e) {
+        logMessage(params.log_path, "Error in baseline removal: " + std::string(e.what()));
+        field_data.success = false;
+        return;
+    }
     sources_data.success = true; // Set success to true if baseline removal was successful
-    return;
+}
+
+
+/**
+ * @brief copies the photometry data to the device
+ * 
+ * This function copies the photometry data for each chunk from the host to the device.
+ * 
+ * @param field_data The field data to copy
+ * @param sources_data The sources data to copy from
+ * @param device_arrays The device arrays to copy to
+ * @param objnum_periodograms The number of periodograms to copy
+ */
+void copyPhotToDevice(FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays, unsigned long objnum_periodograms) {
+    cudaMemcpy(device_arrays.y_device, sources_data.fluxes_no_baseline.data(), objnum_periodograms * field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_arrays.ivar_device, sources_data.flux_ivars.data(), objnum_periodograms * field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice);
+}
+
+
+/**
+ * @brief Copies the peak data back to the host and finds the peak frequencies
+ * 
+ * This function copies the peak indices and values back to the host and finds the peak frequencies from the indices.
+ * 
+ * @param params The processing parameters
+ * @param field_data The field data to copy from
+ * @param sources_data The sources data to copy to
+ * @param device_arrays The device arrays to copy from
+ * @param objnum_periodograms The number of periodograms to copy
+ */
+void copyPeaksToHost(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays, unsigned long objnum_periodograms) {
+    // Copy the peak indices and values back to the host
+
+    cudaMemcpy(sources_data.peak_indices.data(), device_arrays.peak_indices_device, objnum_periodograms * params.N_samples * N_peaks * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(sources_data.peak_values.data(), device_arrays.peak_values_device, objnum_periodograms * params.N_samples * N_peaks * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(sources_data.periodogram_medians.data(), device_arrays.periodogram_medians_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(sources_data.periodogram_mads.data(), device_arrays.periodogram_mads_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Find the peak frequencies from the indices
+    for (unsigned long j = 0; j < objnum_periodograms * params.N_samples; j++) {
+        for (unsigned long k = 0; k < N_peaks; k++) {
+            int peakIndex = sources_data.peak_indices[j * N_peaks + k];
+            if (peakIndex >= 0) {
+                sources_data.peak_freqs[j * N_peaks + k] = field_data.fgrid[peakIndex];
+            } else {
+                sources_data.peak_freqs[j * N_peaks + k] = -1.0f; // Set to -1 if no peak found
+            }
+        }
+    }
+}
+
+/**
+ * @brief Resets the state arrays for peak finding
+ * 
+ * This function resets the persistent arrays used for peak finding to their initial state for the next source chunk.
+ * 
+ * @param peak_arrays The peak persistent arrays to reset
+ * @param params The processing parameters
+ * @param field_data The field data to use for resetting
+ */
+void resetStateArrays(PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data) {
+    // Reset the persistent arrays for peak finding
+    cudaMemset(peak_arrays.state_candidate_idx, -1, field_data.N_src_per_batch * params.N_samples * sizeof(int));
+    cudaMemset(peak_arrays.state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+    cudaMemset(peak_arrays.state_dist_last_peak, 0, field_data.N_src_per_batch * params.N_samples * sizeof(int));
+    cudaMemset(peak_arrays.state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
 }
 
 /**
@@ -280,7 +394,7 @@ void process(const ProcessingExternalParams& params) {
     // --- Initialize Chunk Source Data ---
     int status;
     unsigned long objstart_periodograms, objnum_periodograms;
-    SourcesData sources_data(field_data); // Initialize sources data with field data
+    SourcesData sources_data(params, field_data); // Initialize sources data with field data
 
     // --- Initialize Kernel Launch Parameters ---
     KernelLaunchParams kernel_params(params, field_data);
@@ -321,6 +435,16 @@ void process(const ProcessingExternalParams& params) {
 
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
+        logMessage(params.log_path, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
+
+        auto start_removeOutliers = chrono::high_resolution_clock::now(); // Time removing outliers
+
+        //Remove outliers from the fluxes, also median subtracts the fluxes
+        removeOutliers(field_data, sources_data, device_arrays, kernel_params, objnum_periodograms);
+
+        auto stop_removeOutliers = chrono::high_resolution_clock::now();
+        auto duration_removeOutliers = chrono::duration_cast<chrono::milliseconds>(stop_removeOutliers - start_removeOutliers);
+        logMessage(params.log_path, "Time to remove outliers: " + to_string(duration_removeOutliers.count()) + " milliseconds");
 
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
@@ -342,8 +466,7 @@ void process(const ProcessingExternalParams& params) {
         logMessage(params.log_path, "Time to remove baseline: " + to_string(duration_removebaseline.count()) + " milliseconds");
 
         // Copy host fluxes and flux errors to device
-        cudaMemcpy(device_arrays.y_device, sources_data.fluxes_no_baseline.data(), objnum_periodograms * field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(device_arrays.ivar_device, sources_data.flux_ivars.data(), objnum_periodograms * field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice);
+        copyPhotToDevice(field_data, sources_data, device_arrays, objnum_periodograms);
 
         for (unsigned long i = 0; i < field_data.N_freqs; i += field_data.N_freqs_per_batch) {
             unsigned long N_freqs_current = std::min(field_data.N_freqs_per_batch, field_data.N_freqs - i);
@@ -378,8 +501,8 @@ void process(const ProcessingExternalParams& params) {
             if (i == 0) {
                 CudaComputeMedianandMAD<<<kernel_params.grid_size_postprocess,
                                           kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-                                                                                  device_arrays.medians_device,
-                                                                                  device_arrays.mads_device,
+                                                                                  device_arrays.periodogram_medians_device,
+                                                                                  device_arrays.periodogram_mads_device,
                                                                                   static_cast<int>(N_freqs_current),
                                                                                   static_cast<int>(objnum_periodograms) * params.N_samples);
             }
@@ -387,8 +510,8 @@ void process(const ProcessingExternalParams& params) {
             // Find peaks in this chunk
             cudaFindPeaksChunk<<<kernel_params.grid_size_postprocess,
                         kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-                                                    device_arrays.medians_device,
-                                                    device_arrays.mads_device,
+                                                    device_arrays.periodogram_medians_device,
+                                                    device_arrays.periodogram_mads_device,
                                                     device_arrays.peak_indices_device,
                                                     device_arrays.peak_values_device,
                                                     static_cast<int>(N_freqs_current),
@@ -404,42 +527,24 @@ void process(const ProcessingExternalParams& params) {
         }
 
         // Copy the peak indices and values back to the host
-        vector<int> peak_indices(objnum_periodograms * params.N_samples * N_peaks, -1);
-        vector<float> peak_values(objnum_periodograms * params.N_samples * N_peaks, -INFINITY);
-        vector<float> periodogram_medians(objnum_periodograms * params.N_samples, 0.0f);
-        vector<float> periodogram_mads(objnum_periodograms * params.N_samples, 0.0f);
-
-        cudaMemcpy(peak_indices.data(), device_arrays.peak_indices_device, objnum_periodograms * params.N_samples * N_peaks * sizeof(int), cudaMemcpyDeviceToHost);
-        cudaMemcpy(peak_values.data(), device_arrays.peak_values_device, objnum_periodograms * params.N_samples * N_peaks * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(periodogram_medians.data(), device_arrays.medians_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(periodogram_mads.data(), device_arrays.mads_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
-
-        // Find the peak frequencies from the indices
-        vector<float> peak_freqs(objnum_periodograms * params.N_samples * N_peaks, -1.0f);
-        for (unsigned long j = 0; j < objnum_periodograms * params.N_samples; j++) {
-            for (unsigned long k = 0; k < N_peaks; k++) {
-                int peakIndex = peak_indices[j * N_peaks + k];
-                if (peakIndex >= 0) {
-                    peak_freqs[j * N_peaks + k] = field_data.fgrid[peakIndex];
-                } else {
-                    peak_freqs[j * N_peaks + k] = -1.0f; // Set to -1 if no peak found
-                }
-            }
-        }
+        copyPeaksToHost(params, field_data, sources_data, device_arrays, objnum_periodograms);
 
         // Write results to file
         appendResults(results_filename,
                       sources_data.psids.data(),
                       sources_data.ras.data(), sources_data.decs.data(),
                       sources_data.ratioValid.data(),
-                      peak_freqs.data(),
-                      peak_values.data(),
-                      periodogram_medians.data(),
-                      periodogram_mads.data(),
+                      sources_data.peak_freqs.data(),
+                      sources_data.peak_values.data(),
+                      sources_data.periodogram_medians.data(),
+                      sources_data.periodogram_mads.data(),
                       objnum_periodograms,
                       params.N_samples,
                       N_peaks,
                       objstart_periodograms);
+
+        // Reset the persistent arrays for the next chunk
+        resetStateArrays(peak_arrays, params, field_data);
     }
 
     //Remove the .temp extension at the end
