@@ -69,10 +69,18 @@ std::vector<int> find_peaks(
   const float               // theshold
 );
 
+__device__ bool find_next_peak(
+    float* curve_data, size_t& sample_idx, const size_t last_peak_check,
+    int& peak_idx, float& peak_value
+);
+
+__device__ void insert_peak(
+    int* top_peak_indices, float* top_peak_values, int N_peaks,
+    int candidate_peak_idx, float candidate_peak_value
+);
+
 __global__ void cudaFindPeaks(
     float* data, //input data (N_dat * N_curves)
-    float* median, //medians (N_curves)
-    float* mad, //median absolute deviations (N_curves)
     int* peakIndices, //output for peak indices (N_curves * Ntop)
     float* peakValues, //output for peak significances (N_curves * Ntop)
     int N_dat, //N_dat
@@ -82,21 +90,20 @@ __global__ void cudaFindPeaks(
 );
 
 __global__ void cudaFindPeaksChunk(
-    float* data, //input data (N_dat * N_curves)
-    float* median, //medians (N_curves)
-    float* mad, //median absolute deviations (N_curves)
-    int* peakIndices, //output for peak indices (N_curves * Ntop)
-    float* peakValues, //output for peak significances (N_curves * Ntop)
-    int N_dat, //N_dat
-    int N_curves, //N_curves
-    int distance, //distance between peaks
-    float threshold, //minimum significance for a peak to be considered
-    int* state_candidate_idx, // store candidate indices when the chunk ends (N_curves)
-    float* state_candidate_val, // store candidate values when the chunk ends (N_curves)
-    int* state_distLastPeak, // store the distance to the last peak when the chunk ends (N_curves)
-    float* state_currentThreshold, // store the current threshold when the chunk ends (N_curves)
-    int chunk_start, // start of the chunk index
-    int chunk_end // end of the chunk index
+    float* data,                    // [N_curves * N_dat] Input: all curve data, row-major. NOTE: The first two values are the
+                                    // last two values from the previous chunk.
+    float* last_chunk_data,         // [N_curves * 2] Input: last two values from the previous chunk for each curve. If this is the first chunk, they are set to -1.0f.
+    int* peakIndices,               // [N_curves * N_peaks] Output: indices of top peaks per curve
+    float* peakValues,              // [N_curves * N_peaks] Output: values of top peaks per curve
+    int N_dat,                      // Number of data points per curve for this chunk
+    int N_curves,                   // Number of curves
+    int distance,                   // Minimum distance between peaks
+    float threshold,                // Minimum S/N threshold for a peak
+    int chunk_start_global_idx,     // Start index (inclusive) of this chunk in the curve (N_dat * chunk_num)
+    int* state_candidate_idx,       // [N_curves] Persistent: candidate peak index (global)
+    float* state_candidate_val,     // [N_curves] Persistent: candidate peak value (global)
+    int* state_distLastPeak,        // [N_curves] Persistent: distance since last accepted/candidate peak
+    float* state_currentThreshold  // [N_curves] Persistent: current dynamic threshold
 );
 
 #endif

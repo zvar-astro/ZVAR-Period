@@ -4,7 +4,7 @@
 #include "periodograms/FPW/wrappers.cuh"
 #include "readwrite/hdf5_utils.h"
 #include "statistics/polyfit.cuh"
-#include "statistics/peak_utils.h"
+#include "statistics/peak_utils.cuh"
 #include "periodograms/frequencyGrid.h"
 #include "statistics/curve_statistics.cuh"
 #include "msc/diagnostics.h"
@@ -27,7 +27,7 @@ struct ProcessingExternalParams {
     // Hardware/Concurrency
     int device = 0; // Default GPU device
     int num_omp_threads = 1; // Default OpenMP threads
-    float percent_indices = 0.5f; // Default percentage of indices to use
+    float percent_indices = 0.5f; // Default percentage of memory to use for indices
 
     // File/Directory Names
     std::string input_hdf_filename;
@@ -56,7 +56,7 @@ struct ProcessingExternalParams {
 
     // Peak Finding Parameters
     int peak_distance = 300; // Minimum distance between peaks
-    float peak_threshold = 7.0f; // Minimum significance threshold
+    float peak_threshold = 1.0f; // Minimum significance threshold
     bool success = false; // To indicate if loading was successful
 
     // Constructor
@@ -79,7 +79,7 @@ struct ProcessingExternalParams {
         int model_id = 15,
         const std::vector<int>& N_bins = {20, 10, 5},
         int peak_distance = 300,
-        float peak_threshold = 7.0f
+        float peak_threshold = 0.1f
     )
         : device(device),
           num_omp_threads(num_omp_threads),
@@ -133,7 +133,7 @@ struct SourcesData {
     std::vector<float> fluxes_mads;
     std::vector<float> periodogram_medians;
     std::vector<float> periodogram_mads;
-    std::vector<float> peak_indices;
+    std::vector<int> peak_indices;
     std::vector<float> peak_freqs;
     std::vector<float> peak_values;
     bool success = false; // To indicate if loading was successful
@@ -153,7 +153,7 @@ struct SourcesData {
           periodogram_mads(field_data.N_src_per_batch * params.N_samples, 0.0f),
           peak_indices(field_data.N_src_per_batch * params.N_samples * N_peaks, -1),
           peak_freqs(field_data.N_src_per_batch * params.N_samples * N_peaks, -1.0f),
-          peak_values(field_data.N_src_per_batch * params.N_samples * N_peaks, -INFINITY) {}
+          peak_values(field_data.N_src_per_batch * params.N_samples * N_peaks, -1.0f) {}
 };
 
 struct KernelLaunchParams {
@@ -233,6 +233,9 @@ struct DeviceArrays {
         cudaMemcpyAsync(t_device, field_data.times.data(), field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice); // copy the times over, this is only done once.
         cudaMemcpyAsync(N_bins_device, params.N_bins.data(), params.N_samples * sizeof(int), cudaMemcpyHostToDevice); // copy the N_bins over, this is only done once.
 
+        cudaMemsetAsync(peak_indices_device, -1, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
+        cudaMemsetAsync(peak_values_device, -1.0, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
+
         cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
 
         //Check for errors
@@ -273,22 +276,26 @@ struct PeakPersistentArrays {
     float* state_candidate_vals;
     int* state_dist_last_peak;
     float* state_current_threshold;
+    float* last_chunk_data_device;
 
     PeakPersistentArrays(const ProcessingExternalParams& params, FieldData& field_data)
         : state_candidate_idx(nullptr),
           state_candidate_vals(nullptr),
           state_dist_last_peak(nullptr),
-          state_current_threshold(nullptr) {
+          state_current_threshold(nullptr),
+          last_chunk_data_device(nullptr) {
         // Allocate device memory here
         cudaMalloc(&state_candidate_idx, field_data.N_src_per_batch * params.N_samples * sizeof(int));
         cudaMalloc(&state_candidate_vals, field_data.N_src_per_batch * params.N_samples * sizeof(float));
         cudaMalloc(&state_dist_last_peak, field_data.N_src_per_batch * params.N_samples * sizeof(int));
         cudaMalloc(&state_current_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMalloc(&last_chunk_data_device, field_data.N_src_per_batch * 2 * sizeof(float));
 
         cudaMemsetAsync(state_candidate_idx, -1, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-        cudaMemsetAsync(state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMemsetAsync(state_candidate_vals, -1.0f, field_data.N_src_per_batch * params.N_samples * sizeof(float));
         cudaMemsetAsync(state_dist_last_peak, 0, field_data.N_src_per_batch * params.N_samples * sizeof(int));
         cudaMemsetAsync(state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMemsetAsync(last_chunk_data_device, 0, field_data.N_src_per_batch * 2 * sizeof(float));
 
         cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
 
@@ -305,6 +312,7 @@ struct PeakPersistentArrays {
         cudaFree(state_candidate_vals);
         cudaFree(state_dist_last_peak);
         cudaFree(state_current_threshold);
+        cudaFree(last_chunk_data_device);
 
         // Check for errors
         cudaError_t err = cudaGetLastError();

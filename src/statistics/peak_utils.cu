@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <functional>
 #include <chrono>
-#include "peak_utils.h"
+#include "peak_utils.cuh"
 
 
 float mean(std::vector<float> v) {
@@ -137,32 +137,37 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N_curves) {
-        // Pointer to the start of the curve data for this thread
         float* curve_data = data + idx * N_dat;
 
-        // Variables for Torben's algorithm
-        int less, greater, equal;
-        float min, max, guess, maxltguess, mingtguess;
-
-        // Step 1: Initialize min and max for the median
-        min = max = curve_data[0];
-        for (int i = 1; i < N_dat; i++) {
+        // Step 1: Find min/max ignoring NaNs
+        float min = NAN, max = NAN;
+        int valid_count = 0;
+        for (int i = 0; i < N_dat; i++) {
             float val = curve_data[i];
-            if (val < min) min = val;
-            if (val > max) max = val;
+            if (!isnan(val)) {
+                if (valid_count == 0) min = max = val;
+                if (val < min) min = val;
+                if (val > max) max = val;
+                valid_count++;
+            }
+        }
+        if (valid_count == 0) {
+            medians[idx] = NAN;
+            mads[idx] = NAN;
+            return;
         }
 
-        // Step 2: Compute the median using Torben's algorithm
+        // Step 2: Torben's median, ignoring NaNs
+        float guess, maxltguess, mingtguess;
+        int less, greater, equal;
         while (true) {
             guess = (min + max) / 2.0f;
-            less = 0;
-            greater = 0;
-            equal = 0;
+            less = greater = equal = 0;
             maxltguess = min;
             mingtguess = max;
-
             for (int i = 0; i < N_dat; i++) {
                 float val = curve_data[i];
+                if (isnan(val)) continue;
                 if (val < guess) {
                     less++;
                     if (val > maxltguess) maxltguess = val;
@@ -173,43 +178,48 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
                     equal++;
                 }
             }
-
-            if (less <= (N_dat + 1) / 2 && greater <= (N_dat + 1) / 2) break;
+            if (less <= (valid_count + 1) / 2 && greater <= (valid_count + 1) / 2) break;
             else if (less > greater) max = maxltguess;
             else min = mingtguess;
         }
-
-        // Determine the median
         float median_value;
-        if (less >= (N_dat + 1) / 2) {
+        if (less >= (valid_count + 1) / 2) {
             median_value = maxltguess;
-        } else if (less + equal >= (N_dat + 1) / 2) {
+        } else if (less + equal >= (valid_count + 1) / 2) {
             median_value = guess;
         } else {
             median_value = mingtguess;
         }
         medians[idx] = median_value;
 
-        // Step 3: Initialize min and max for the MAD
-        min = fabsf(curve_data[0] - median_value);
-        max = min;
-        for (int i = 1; i < N_dat; i++) {
-            float abs_diff = fabsf(curve_data[i] - median_value);
-            if (abs_diff < min) min = abs_diff;
-            if (abs_diff > max) max = abs_diff;
+        // Step 3: MAD min/max ignoring NaNs
+        min = max = NAN;
+        valid_count = 0;
+        for (int i = 0; i < N_dat; i++) {
+            float val = curve_data[i];
+            if (!isnan(val)) {
+                float abs_diff = fabsf(val - median_value);
+                if (valid_count == 0) min = max = abs_diff;
+                if (abs_diff < min) min = abs_diff;
+                if (abs_diff > max) max = abs_diff;
+                valid_count++;
+            }
+        }
+        if (valid_count == 0) {
+            mads[idx] = NAN;
+            return;
         }
 
-        // Step 4: Compute the MAD using Torben's algorithm
+        // Step 4: Torben's MAD, ignoring NaNs
         while (true) {
             guess = (min + max) / 2.0f;
-            less = 0;
-            greater = 0;
-            equal = 0;
+            less = greater = equal = 0;
             maxltguess = min;
             mingtguess = max;
-
             for (int i = 0; i < N_dat; i++) {
-                float abs_diff = fabsf(curve_data[i] - median_value);
+                float val = curve_data[i];
+                if (isnan(val)) continue;
+                float abs_diff = fabsf(val - median_value);
                 if (abs_diff < guess) {
                     less++;
                     if (abs_diff > maxltguess) maxltguess = abs_diff;
@@ -220,17 +230,14 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
                     equal++;
                 }
             }
-
-            if (less <= (N_dat + 1) / 2 && greater <= (N_dat + 1) / 2) break;
+            if (less <= (valid_count + 1) / 2 && greater <= (valid_count + 1) / 2) break;
             else if (less > greater) max = maxltguess;
             else min = mingtguess;
         }
-
-        // Determine the MAD
         float mad_value;
-        if (less >= (N_dat + 1) / 2) {
+        if (less >= (valid_count + 1) / 2) {
             mad_value = maxltguess;
-        } else if (less + equal >= (N_dat + 1) / 2) {
+        } else if (less + equal >= (valid_count + 1) / 2) {
             mad_value = guess;
         } else {
             mad_value = mingtguess;
@@ -472,217 +479,298 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     return itop;
 }
 
-//Greedy algorithm to find the top N peaks. This algorithm is not perfect, but it is much faster than global search-sort.
-#define N_peaks 32
-__global__ void cudaFindPeaks(float* data, float* median, float* mad,
-                              int* peakIndices, float* peakValues,
-                              int N_dat, int N_curves, int distance, float threshold) {
+__global__ void cudaComputeSignificance(float* data, float* median, float* mad, int N_dat, int N_curves) {
+    /*
+    CUDA kernel to compute significance of each data point in the curves.
+    The significance is computed as (data - median) / mad for each curve.
+    This is done in-place, modifying the original data array.
+
+    data = pointer to the data (N_dat * N_curves)
+    median = pointer to the median values (N_curves)
+    mad = pointer to the MAD values (N_curves)
+    N_dat = number of data points in each curve
+    N_curves = number of curves
+    */
 
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N_curves) {
-        // Pointer to the start of the curve data for this thread
         float* curve_data = data + idx * N_dat;
-        // Pointers to the output arrays for this curve
-        float* curve_peak_values_out = peakValues + idx * N_peaks;
-        int* curve_peak_indices_out = peakIndices + idx * N_peaks;
+        float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f; // Use a safe value for mad
 
-        // --- Local storage for top N peaks for this thread ---
-        int top_indices[N_peaks];
-        float top_values[N_peaks];
-        for (int k = 0; k < N_peaks; ++k) {
-            top_indices[k] = -1;
-            top_values[k] = -INFINITY; // Use -INFINITY
-        }
-        // --- End Local Storage ---
-
-        // --- Step 1: Compute significances in-place ---
-        float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f; // Use safe_mad
         for (int i = 0; i < N_dat; i++) {
             curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
         }
-        // --- End Step 1 ---
+    }
+}
 
-        // --- Step 2: Find peaks using threshold pivot and manage top N ---
-        size_t i = 1; // Start from the second element
-        size_t i_max = N_dat - 1; // Go up to the second-to-last element
+#define N_peaks 32
+//Greedy algorithm to find the top N peaks. This algorithm is not perfect, but it is much faster than global search-sort.
+__device__ bool find_next_peak(
+    float* curve_data, size_t& sample_idx, const size_t last_peak_check,
+    int& peak_idx, float& peak_value
+) {
+    if (curve_data[sample_idx] > curve_data[sample_idx - 1] &&
+        curve_data[sample_idx] > curve_data[sample_idx + 1]) {
+        peak_idx = static_cast<int>(sample_idx);
+        peak_value = curve_data[sample_idx];
+        return true;
+    }
+    return false;
+}
 
-        int distLastPeak = distance; // Initialize to allow first peak
-        float currentThreshold = threshold; // Start with base threshold
-        int candidatePeakIdx = -1;
-        float candidatePeakVal = -INFINITY;
-
-        while (i < i_max) {
-            // Check 1: Local maximum condition (potential peak start)
-            if (curve_data[i] > curve_data[i - 1]) {
-                size_t i_ahead = i + 1;
-                // Handle plateaus: find next different value
-                while (i_ahead < i_max && curve_data[i_ahead] == curve_data[i]) {
-                    i_ahead++;
-                }
-
-                // Check if it's a peak (next different value is lower)
-                if (i_ahead < i_max && curve_data[i_ahead] < curve_data[i]) {
-                    // Potential peak found.
-                    int current_peak_idx = static_cast<int>((i + i_ahead - 1) / 2); // Midpoint index
-                    float current_peak_val = curve_data[i]; // Value at start of plateau
-
-                    // Check 2: Significance threshold and pivot
-                    if (current_peak_val >= currentThreshold) {
-                        // This peak is higher than the current threshold (or the base threshold)
-                        // Make it the new candidate
-                        candidatePeakIdx = current_peak_idx;
-                        candidatePeakVal = current_peak_val;
-                        distLastPeak = 0; // Reset distance since we found a new candidate
-                        currentThreshold = current_peak_val; // Pivot threshold: only accept higher peaks now
-                    }
-                    // Move main loop index past the plateau
-                    i = i_ahead;
-                    continue; // Continue to next iteration to increment distance counter
-                }
-            }
-
-            // Increment distance if a candidate is active
-            if (candidatePeakIdx != -1) {
-                distLastPeak++;
-            }
-
-            // Check 3: Distance constraint met, insert candidate
-            if (distLastPeak == distance && candidatePeakIdx != -1) {
-                // Insert the candidate peak into the sorted top_N list
-                int ins_pos = N_peaks;
-                for (size_t j = 0; j < N_peaks; ++j) {
-                    if (candidatePeakVal > top_values[j]) {
-                        ins_pos = j;
-                        break;
-                    }
-                }
-                if (ins_pos < N_peaks) {
-                    // Shift elements down
-                    for (int k = N_peaks - 1; k > ins_pos; --k) {
-                        top_indices[k] = top_indices[k - 1];
-                        top_values[k] = top_values[k - 1];
-                    }
-                    // Insert new peak
-                    top_indices[ins_pos] = candidatePeakIdx;
-                    top_values[ins_pos] = candidatePeakVal;
-                }
-
-                // Reset for next search window
-                distLastPeak = 0; // Reset distance counter (start counting from the accepted peak)
-                currentThreshold = threshold; // Reset threshold to base
-                candidatePeakIdx = -1; // Clear candidate
-                candidatePeakVal = -INFINITY;
-            }
-
-            i++; // Move to the next point if no peak/plateau was handled
+__device__ void insert_peak(
+    int* top_peak_indices, float* top_peak_values,
+    int candidate_peak_idx, float candidate_peak_value
+) {
+    int insert_pos = N_peaks;
+    for (int rank = 0; rank < N_peaks; ++rank) {
+        if (candidate_peak_value > top_peak_values[rank]) {
+            insert_pos = rank;
+            break;
         }
-        // --- End Step 2 ---
-
-        // --- Step 3: Write results from local arrays to global memory ---
-        for (size_t k = 0; k < N_peaks; ++k) {
-            curve_peak_indices_out[k] = top_indices[k];
-            // Use the actual S/N value if found, otherwise 0.0f
-            curve_peak_values_out[k] = (top_indices[k] != -1) ? top_values[k] : 0.0f;
+    }
+    if (insert_pos < N_peaks) {
+        for (int k = N_peaks - 1; k > insert_pos; --k) {
+            top_peak_indices[k] = top_peak_indices[k - 1];
+            top_peak_values[k] = top_peak_values[k - 1];
         }
-        // --- End Step 3 ---
+        top_peak_indices[insert_pos] = candidate_peak_idx;
+        top_peak_values[insert_pos] = candidate_peak_value;
+    }
+}
+
+__global__ void cudaFindPeaks(
+    float* data,
+    int* peakIndices,
+    float* peakValues,
+    int N_dat,
+    int N_curves,
+    int distance,
+    float threshold
+) {
+    size_t curve_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (curve_idx >= N_curves) return;
+
+    float* curve_data = data + curve_idx * N_dat;
+    float* curve_peak_values_out = peakValues + curve_idx * N_peaks;
+    int* curve_peak_indices_out = peakIndices + curve_idx * N_peaks;
+
+    int top_peak_indices[N_peaks];
+    float top_peak_values[N_peaks];
+    for (int peak_rank = 0; peak_rank < N_peaks; ++peak_rank) {
+        top_peak_indices[peak_rank] = -1;
+        top_peak_values[peak_rank] = -INFINITY;
+    }
+
+    size_t sample_idx = 1;
+    const size_t last_peak_check = N_dat - 1;
+
+    int distance_since_last_peak = distance;
+    float dynamic_threshold = threshold;
+    int candidate_peak_idx = -1;
+    float candidate_peak_value = -INFINITY;
+
+    while (sample_idx < last_peak_check) {
+        int local_peak_idx = -1;
+        float local_peak_value = -INFINITY;
+        if (find_next_peak(curve_data, sample_idx, last_peak_check, local_peak_idx, local_peak_value)) {
+            if (local_peak_value >= dynamic_threshold) {
+                candidate_peak_idx = local_peak_idx;
+                candidate_peak_value = local_peak_value;
+                distance_since_last_peak = 0;
+                dynamic_threshold = local_peak_value;
+            }
+        }
+
+        if (candidate_peak_idx != -1) {
+            distance_since_last_peak++;
+        }
+
+        if (distance_since_last_peak == distance && candidate_peak_idx != -1) {
+            insert_peak(top_peak_indices, top_peak_values, candidate_peak_idx, candidate_peak_value);
+            distance_since_last_peak = 0;
+            dynamic_threshold = threshold;
+            candidate_peak_idx = -1;
+            candidate_peak_value = -INFINITY;
+        }
+
+        sample_idx++;
+    }
+
+    for (int peak_rank = 0; peak_rank < N_peaks; ++peak_rank) {
+        curve_peak_indices_out[peak_rank] = top_peak_indices[peak_rank];
+        curve_peak_values_out[peak_rank] = (top_peak_indices[peak_rank] != -1) ? top_peak_values[peak_rank] : 0.0f;
     }
 }
 
 
-__global__ void cudaFindPeaksChunk(float* data, float* median, float* mad,
-                                   int* peakIndices, float* peakValues,
-                                   int N_dat, int N_curves, int distance, float threshold,
-                                   int* state_candidate_idx, float* state_candidate_val,
-                                   int* state_distLastPeak, float* state_currentThreshold,
-                                   int chunk_start, int chunk_end) {
-        
-    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void cudaFindPeaksChunk(
+    float* data,                    // [N_curves * N_dat] Input: all curve data, row-major. NOTE: The first two values are the
+                                    // last two values from the previous chunk.
+    float* last_chunk_data,         // [N_curves * 2] Input: last two values from the previous chunk for each curve. If this is the first chunk, they are set to -1.0f.
+    int* peakIndices,               // [N_curves * N_peaks] Output: indices of top peaks per curve
+    float* peakValues,              // [N_curves * N_peaks] Output: values of top peaks per curve
+    int N_dat,                      // Number of data points per curve for this chunk
+    int N_curves,                   // Number of curves
+    int distance,                   // Minimum distance between peaks
+    float threshold,                // Minimum S/N threshold for a peak
+    int chunk_start_global_idx,     // Start index (inclusive) of this chunk in the curve (N_dat * chunk_num)
+    int* state_candidate_idx,       // [N_curves] Persistent: candidate peak index (global)
+    float* state_candidate_val,     // [N_curves] Persistent: candidate peak value (global)
+    int* state_distLastPeak,        // [N_curves] Persistent: distance since last accepted/candidate peak
+    float* state_currentThreshold  // [N_curves] Persistent: current dynamic threshold
+){
+    size_t curve_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (curve_idx >= N_curves) return;
 
-    if (idx < N_curves) {
-        float* curve_data = data + idx * N_dat;
-        float* curve_peak_values_out = peakValues + idx * N_peaks;
-        int* curve_peak_indices_out = peakIndices + idx * N_peaks;
+    // Pointers to this curve's data and output
+    float* curve_data = data + curve_idx * N_dat;
+    float* last_chunk_curve_data = last_chunk_data + curve_idx * 2;
+    float* curve_peak_values_out = peakValues + curve_idx * N_peaks;
+    int* curve_peak_indices_out = peakIndices + curve_idx * N_peaks;
 
-        // --- Load top N peaks from global memory ---
-        int top_indices[N_peaks];
-        float top_values[N_peaks];
-        for (size_t k = 0; k < N_peaks; ++k) {
-            top_indices[k] = curve_peak_indices_out[k];
-            top_values[k] = curve_peak_values_out[k];
-        }
+    // --- Local storage for top N peaks (descending order) ---
+    int top_peak_indices[N_peaks];
+    float top_peak_values[N_peaks];
+    for (int peak_rank = 0; peak_rank < N_peaks; ++peak_rank) {
+        top_peak_indices[peak_rank] = curve_peak_indices_out[peak_rank];
+        top_peak_values[peak_rank] = curve_peak_values_out[peak_rank];
+    }
 
-        // --- Load persistent state ---
-        int candidatePeakIdx = state_candidate_idx[idx];
-        float candidatePeakVal = state_candidate_val[idx];
-        int distLastPeak = state_distLastPeak[idx];
-        float currentThreshold = state_currentThreshold[idx];
+    // --- Load persistent state for this curve ---
+    int candidate_peak_idx = state_candidate_idx[curve_idx];
+    float candidate_peak_value = state_candidate_val[curve_idx];
+    int distance_since_last_peak = state_distLastPeak[curve_idx];
+    float dynamic_threshold = state_currentThreshold[curve_idx];
 
-        float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f;
-        // Only normalize the current chunk
-        for (size_t i = chunk_start; i < chunk_end; i++) {
-            curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
-        }
+    // --- Peak finding loop for this chunk ---
+    size_t sample_idx = 1; // Index being checked for a peak
+    size_t last_peak_check = N_dat - 1; // Last index to check for a peak, this is the second to last sample of this chunk
 
-        size_t i = max(static_cast<size_t>(chunk_start), size_t(1));
-        size_t i_max = min(chunk_end, N_dat - 1);
+    int local_peak_idx = -1; // Index of a peak found locally within curve_data
+    float local_peak_value = -INFINITY; // Value of the local peak
 
-        while (i < i_max) {
-            if (curve_data[i] > curve_data[i - 1]) {
-                size_t i_ahead = i + 1;
-                while (i_ahead < i_max && curve_data[i_ahead] == curve_data[i]) {
-                    i_ahead++;
-                }
-                if (i_ahead < i_max && curve_data[i_ahead] < curve_data[i]) {
-                    int current_peak_idx = static_cast<int>((i + i_ahead - 1) / 2);
-                    float current_peak_val = curve_data[i];
-                    if (current_peak_val >= currentThreshold) {
-                        candidatePeakIdx = current_peak_idx;
-                        candidatePeakVal = current_peak_val;
-                        distLastPeak = 0;
-                        currentThreshold = current_peak_val;
-                    }
-                    i = i_ahead;
-                    continue;
-                }
+    // Handle the last sample of the previous chunk and the first sample of this chunk
+    if (chunk_start_global_idx > 0) {
+        // If this is not the first chunk, we have two samples from the previous chunk
+        // We need to check if the last sample from the last chunk is a peak.
+        if (last_chunk_data[1] > last_chunk_data[0] &&
+            last_chunk_data[1] > curve_data[0]) {
+            local_peak_idx = -1;
+            local_peak_value = last_chunk_data[1];
+
+            if (local_peak_value >= dynamic_threshold) {
+                candidate_peak_idx = local_peak_idx + chunk_start_global_idx; // Convert local peak index to global index
+                candidate_peak_value = local_peak_value;
+                distance_since_last_peak = 0; // Reset distance for the new candidate
+                dynamic_threshold = local_peak_value; // Pivot: new peaks must be higher than this candidate
             }
-            if (candidatePeakIdx != -1) {
-                distLastPeak++;
-            }
-            if (distLastPeak == distance && candidatePeakIdx != -1) {
-                int ins_pos = N_peaks;
-                for (size_t j = 0; j < N_peaks; ++j) {
-                    if (candidatePeakVal > top_values[j]) {
-                        ins_pos = j;
-                        break;
-                    }
-                }
-                if (ins_pos < N_peaks) {
-                    for (int k = N_peaks - 1; k > ins_pos; --k) {
-                        top_indices[k] = top_indices[k - 1];
-                        top_values[k] = top_values[k - 1];
-                    }
-                    top_indices[ins_pos] = candidatePeakIdx;
-                    top_values[ins_pos] = candidatePeakVal;
-                }
-                distLastPeak = 0;
-                currentThreshold = threshold;
-                candidatePeakIdx = -1;
-                candidatePeakVal = -INFINITY;
-            }
-            i++;
         }
 
-        // --- Save state for next chunk ---
-        state_candidate_idx[idx] = candidatePeakIdx;
-        state_candidate_val[idx] = candidatePeakVal;
-        state_distLastPeak[idx] = distLastPeak;
-        state_currentThreshold[idx] = currentThreshold;
-
-        // --- Write results from local arrays to global memory ---
-        for (size_t k = 0; k < N_peaks; ++k) {
-            curve_peak_indices_out[k] = top_indices[k];
-            curve_peak_values_out[k] = (top_indices[k] != -1) ? top_values[k] : 0.0f;
+        // If there's an active candidate peak, increment its distance counter.
+        if (candidate_peak_idx != -1) {
+            distance_since_last_peak++;
         }
+
+        // If the candidate peak has survived for the required distance
+        if (distance_since_last_peak == distance && candidate_peak_idx != -1) {
+            // The candidate peak is confirmed. Insert it into the top N peaks.
+            insert_peak(top_peak_indices, top_peak_values, candidate_peak_idx, candidate_peak_value);
+
+            // Reset state for finding the next peak
+            distance_since_last_peak = 0;
+            dynamic_threshold = threshold;
+            candidate_peak_idx = -1;
+            candidate_peak_value = -INFINITY;
+        }
+    }
+
+    local_peak_idx = -1; // Reset local peak index for the current chunk
+    local_peak_value = -INFINITY; // Reset local peak value for the current chunk
+    
+    // Handle the first sample of the current chunk
+    if (chunk_start_global_idx > 0) {
+        // If this is not the first chunk, we have two samples from the previous chunk
+        // We need to check if the first sample from this chunk is a peak.
+        if (curve_data[0] > last_chunk_data[1] &&
+            curve_data[0] > curve_data[1]) {
+            local_peak_idx = 0;
+            local_peak_value = curve_data[0];
+
+            if (local_peak_value >= dynamic_threshold) {
+                candidate_peak_idx = local_peak_idx + chunk_start_global_idx; // Convert local peak index to global index
+                candidate_peak_value = local_peak_value;
+                distance_since_last_peak = 0; // Reset distance for the new candidate
+                dynamic_threshold = local_peak_value; // Pivot: new peaks must be higher than this candidate
+            }
+        }
+
+        // If there's an active candidate peak, increment its distance counter.
+        if (candidate_peak_idx != -1) {
+            distance_since_last_peak++;
+        }
+
+        // If the candidate peak has survived for the required distance
+        if (distance_since_last_peak == distance && candidate_peak_idx != -1) {
+            // The candidate peak is confirmed. Insert it into the top N peaks.
+            insert_peak(top_peak_indices, top_peak_values, candidate_peak_idx, candidate_peak_value);
+
+            // Reset state for finding the next peak
+            distance_since_last_peak = 0;
+            dynamic_threshold = threshold;
+            candidate_peak_idx = -1;
+            candidate_peak_value = -INFINITY;
+        }
+    }
+
+    // Iterate through the samples in the current chunk
+    while (sample_idx < last_peak_check) {
+        local_peak_idx = -1; // Index of a peak found locally within curve_data
+        local_peak_value = -INFINITY; // Value of the local peak
+        if (find_next_peak(curve_data, sample_idx, last_peak_check, local_peak_idx, local_peak_value)) {
+            // A local peak was found at local_peak_idx (index relative to curve_data)
+            if (local_peak_value >= dynamic_threshold) {
+                candidate_peak_idx = local_peak_idx + chunk_start_global_idx; //Convert local peak index to global index
+                candidate_peak_value = local_peak_value;
+                distance_since_last_peak = 0; // Reset distance for the new candidate
+                dynamic_threshold = local_peak_value; // Pivot: new peaks must be higher than this candidate
+            }
+        }
+
+        // If there's an active candidate peak, increment its distance counter.
+        if (candidate_peak_idx != -1) {
+            distance_since_last_peak++;
+        }
+
+        // If the candidate peak has survived for the required distance
+        if (distance_since_last_peak == distance && candidate_peak_idx != -1) {
+            // The candidate peak is confirmed. Insert it into the top N peaks.
+            insert_peak(top_peak_indices, top_peak_values, candidate_peak_idx, candidate_peak_value);
+
+            // Reset state for finding the next peak
+            distance_since_last_peak = 0;
+            dynamic_threshold = threshold;
+            candidate_peak_idx = -1;
+            candidate_peak_value = -INFINITY;
+        }
+
+        // Increment the sample index to check the next sample
+        // Note: sample_idx is relative to the start of the chunk, so it does not need to be adjusted for global index.
+        sample_idx++;
+    }
+    // --- End of peak finding loop ---
+
+    // --- Save the state for the next chunk ---
+    state_candidate_idx[curve_idx] = candidate_peak_idx; // Save the candidate peak index for the next chunk
+    state_candidate_val[curve_idx] = candidate_peak_value; // Save the candidate peak value for the next chunk
+    state_distLastPeak[curve_idx] = distance_since_last_peak; // Save the distance since last peak for the next chunk
+    state_currentThreshold[curve_idx] = dynamic_threshold; // Save the current dynamic threshold for the next chunk
+    // --- End of state saving ---
+
+    // --- Write the top N peaks to the output ---
+    for (int peak_rank = 0; peak_rank < N_peaks; ++peak_rank) {
+        curve_peak_indices_out[peak_rank] = top_peak_indices[peak_rank];
+        curve_peak_values_out[peak_rank] = (top_peak_indices[peak_rank] != -1) ? top_peak_values[peak_rank] : 0.0f;
     }
 }

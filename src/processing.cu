@@ -317,7 +317,7 @@ void copyPeaksToHost(const ProcessingExternalParams& params, FieldData& field_da
 void resetStateArrays(PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data) {
     // Reset the persistent arrays for peak finding
     cudaMemset(peak_arrays.state_candidate_idx, -1, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-    cudaMemset(peak_arrays.state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+    cudaMemset(peak_arrays.state_candidate_vals, -1.0f, field_data.N_src_per_batch * params.N_samples * sizeof(float));
     cudaMemset(peak_arrays.state_dist_last_peak, 0, field_data.N_src_per_batch * params.N_samples * sizeof(int));
     cudaMemset(peak_arrays.state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
 }
@@ -505,25 +505,34 @@ void process(const ProcessingExternalParams& params) {
                                                                                   device_arrays.periodogram_mads_device,
                                                                                   static_cast<int>(N_freqs_current),
                                                                                   static_cast<int>(objnum_periodograms) * params.N_samples);
+                cudaDeviceSynchronize();
             }
+
+            // Normalize the periodograms by the median and MAD
+            cudaComputeSignificance<<<kernel_params.grid_size_postprocess,
+                                          kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                                                                                  device_arrays.periodogram_medians_device,
+                                                                                  device_arrays.periodogram_mads_device,
+                                                                                  static_cast<int>(N_freqs_current),
+                                                                                  static_cast<int>(objnum_periodograms) * params.N_samples);
+            cudaDeviceSynchronize();
 
             // Find peaks in this chunk
             cudaFindPeaksChunk<<<kernel_params.grid_size_postprocess,
                         kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-                                                    device_arrays.periodogram_medians_device,
-                                                    device_arrays.periodogram_mads_device,
+                                                    peak_arrays.last_chunk_data_device,
                                                     device_arrays.peak_indices_device,
                                                     device_arrays.peak_values_device,
                                                     static_cast<int>(N_freqs_current),
                                                     static_cast<int>(objnum_periodograms) * params.N_samples,
                                                     params.peak_distance,
                                                     params.peak_threshold,
+                                                    static_cast<int>(i)
                                                     peak_arrays.state_candidate_idx,
                                                     peak_arrays.state_candidate_vals,
                                                     peak_arrays.state_dist_last_peak,
-                                                    peak_arrays.state_current_threshold,
-                                                    static_cast<int>(i),
-                                                    static_cast<int>(i + N_freqs_current));
+                                                    peak_arrays.state_current_threshold);
+            cudaDeviceSynchronize();
         }
 
         // Copy the peak indices and values back to the host
