@@ -483,6 +483,7 @@ __global__ void cudaComputeSignificance(float* data, float* median, float* mad, 
     /*
     CUDA kernel to compute significance of each data point in the curves.
     The significance is computed as (data - median) / mad for each curve.
+    Also cleans out NaN values.
     This is done in-place, modifying the original data array.
 
     data = pointer to the data (N_dat * N_curves)
@@ -500,6 +501,9 @@ __global__ void cudaComputeSignificance(float* data, float* median, float* mad, 
 
         for (int i = 0; i < N_dat; i++) {
             curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
+            if (isnan(curve_data[i])) {
+                curve_data[i] = -INFINITY; // Replace NaN with -INFINITY
+            }
         }
     }
 }
@@ -655,10 +659,10 @@ __global__ void cudaFindPeaksChunk(
     if (chunk_start_global_idx > 0) {
         // If this is not the first chunk, we have two samples from the previous chunk
         // We need to check if the last sample from the last chunk is a peak.
-        if (last_chunk_data[1] > last_chunk_data[0] &&
-            last_chunk_data[1] > curve_data[0]) {
+        if (last_chunk_curve_data[1] > last_chunk_curve_data[0] &&
+            last_chunk_curve_data[1] > curve_data[0]) {
             local_peak_idx = -1;
-            local_peak_value = last_chunk_data[1];
+            local_peak_value = last_chunk_curve_data[1];
 
             if (local_peak_value >= dynamic_threshold) {
                 candidate_peak_idx = local_peak_idx + chunk_start_global_idx; // Convert local peak index to global index
@@ -693,7 +697,7 @@ __global__ void cudaFindPeaksChunk(
     if (chunk_start_global_idx > 0) {
         // If this is not the first chunk, we have two samples from the previous chunk
         // We need to check if the first sample from this chunk is a peak.
-        if (curve_data[0] > last_chunk_data[1] &&
+        if (curve_data[0] > last_chunk_curve_data[1] &&
             curve_data[0] > curve_data[1]) {
             local_peak_idx = 0;
             local_peak_value = curve_data[0];

@@ -171,7 +171,7 @@ struct KernelLaunchParams {
     dim3 grid_size_postprocess;
 
     KernelLaunchParams(const ProcessingExternalParams& params, FieldData& field_data)
-        : block_size_preprocess(256),
+        : block_size_preprocess(512),
           grid_size_preprocess((field_data.N_src_per_batch + block_size_preprocess.x - 1) / block_size_preprocess.x),
           
           block_size_indices(32, 32),
@@ -183,7 +183,7 @@ struct KernelLaunchParams {
                                 (field_data.N_src_per_batch + block_size_deltaChi2.y - 1) / block_size_deltaChi2.y),
           shared_memory_deltaChi2(2 * params.N_bins[0] * block_size_deltaChi2.x * block_size_deltaChi2.y * sizeof(float)),
 
-          block_size_postprocess(256),
+          block_size_postprocess(512),
           grid_size_postprocess((field_data.N_src_per_batch * params.N_samples + block_size_postprocess.x - 1) / block_size_postprocess.x) {}
 };
 
@@ -233,8 +233,11 @@ struct DeviceArrays {
         cudaMemcpyAsync(t_device, field_data.times.data(), field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice); // copy the times over, this is only done once.
         cudaMemcpyAsync(N_bins_device, params.N_bins.data(), params.N_samples * sizeof(int), cudaMemcpyHostToDevice); // copy the N_bins over, this is only done once.
 
+        cudaMemsetAsync(y_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
+        cudaMemsetAsync(ivar_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
+
         cudaMemsetAsync(peak_indices_device, -1, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
-        cudaMemsetAsync(peak_values_device, -1.0, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
+        cudaMemsetAsync(peak_values_device, -INFINITY, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
 
         cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
 
@@ -284,18 +287,18 @@ struct PeakPersistentArrays {
           state_dist_last_peak(nullptr),
           state_current_threshold(nullptr),
           last_chunk_data_device(nullptr) {
-        // Allocate device memory here
+        // Allocate device memory
         cudaMalloc(&state_candidate_idx, field_data.N_src_per_batch * params.N_samples * sizeof(int));
         cudaMalloc(&state_candidate_vals, field_data.N_src_per_batch * params.N_samples * sizeof(float));
         cudaMalloc(&state_dist_last_peak, field_data.N_src_per_batch * params.N_samples * sizeof(int));
         cudaMalloc(&state_current_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMalloc(&last_chunk_data_device, field_data.N_src_per_batch * 2 * sizeof(float));
+        cudaMalloc(&last_chunk_data_device, field_data.N_src_per_batch * params.N_samples * 2 * sizeof(float));
 
         cudaMemsetAsync(state_candidate_idx, -1, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-        cudaMemsetAsync(state_candidate_vals, -1.0f, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMemsetAsync(state_dist_last_peak, 0, field_data.N_src_per_batch * params.N_samples * sizeof(int));
+        cudaMemsetAsync(state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMemsetAsync(state_dist_last_peak, params.peak_distance, field_data.N_src_per_batch * params.N_samples * sizeof(int));
         cudaMemsetAsync(state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMemsetAsync(last_chunk_data_device, 0, field_data.N_src_per_batch * 2 * sizeof(float));
+        cudaMemsetAsync(last_chunk_data_device, 0, field_data.N_src_per_batch * params.N_samples * 2 * sizeof(float));
 
         cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
 
@@ -307,7 +310,6 @@ struct PeakPersistentArrays {
         }
     }
     ~PeakPersistentArrays() {
-        // Free device memory here
         cudaFree(state_candidate_idx);
         cudaFree(state_candidate_vals);
         cudaFree(state_dist_last_peak);
@@ -344,7 +346,9 @@ void copyPhotToDevice(FieldData& field_data, SourcesData& sources_data, DeviceAr
 void copyPeaksToHost(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data,
                      DeviceArrays& device_arrays, unsigned long objnum_periodograms);
 
-void resetStateArrays(PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data);
+void resetPersitentArrays(DeviceArrays& device_arrays, PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data);
+
+void copyLastChunkData(PeakPersistentArrays& peak_arrays, DeviceArrays& device_arrays, int num_periodogram_curves, unsigned long N_freqs_current);
 
 void removeTempStatus(const ProcessingExternalParams& params, string results_filename);
 

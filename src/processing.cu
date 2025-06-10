@@ -272,6 +272,17 @@ void copyPhotToDevice(FieldData& field_data, SourcesData& sources_data, DeviceAr
     cudaMemcpy(device_arrays.ivar_device, sources_data.flux_ivars.data(), objnum_periodograms * field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice);
 }
 
+void copyLastChunkData(PeakPersistentArrays& peak_arrays, DeviceArrays& device_arrays, int num_periodogram_curves, unsigned long N_freqs_current) {
+    cudaError_t cudaStatus;
+    // Copy the last two periodogram values from the last chunk to the persistent arrays
+    for (int curve_idx = 0; curve_idx < num_periodogram_curves; ++curve_idx) {
+        float* src_base_ptr = device_arrays.periodograms_device + (static_cast<size_t>(curve_idx) * N_freqs_current);
+        float* dest_base_ptr = peak_arrays.last_chunk_data_device + (static_cast<size_t>(curve_idx) * 2);
+
+        cudaMemcpy(dest_base_ptr, src_base_ptr + (N_freqs_current - 2), sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(dest_base_ptr + 1, src_base_ptr + (N_freqs_current - 1), sizeof(float), cudaMemcpyDeviceToDevice);
+    }
+}
 
 /**
  * @brief Copies the peak data back to the host and finds the peak frequencies
@@ -314,13 +325,27 @@ void copyPeaksToHost(const ProcessingExternalParams& params, FieldData& field_da
  * @param params The processing parameters
  * @param field_data The field data to use for resetting
  */
-void resetStateArrays(PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data) {
+void resetPersitentArrays(DeviceArrays& device_arrays, PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data) {
+
+    // Reset the device arrays to their initial state for the next source chunk
+    cudaMemset(device_arrays.y_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
+    cudaMemset(device_arrays.ivar_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
+    cudaMemset(device_arrays.y_medians_device, 0, field_data.N_src_per_batch * sizeof(float));
+    cudaMemset(device_arrays.y_mads_device, 0, field_data.N_src_per_batch * sizeof(float));
+    cudaMemset(device_arrays.periodograms_device, 0, field_data.N_src_per_batch * params.N_samples * field_data.N_freqs_per_batch * sizeof(float));
+    cudaMemset(device_arrays.periodogram_medians_device, 0, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+    cudaMemset(device_arrays.periodogram_mads_device, 0, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+    cudaMemset(device_arrays.peak_indices_device, -1, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
+    cudaMemset(device_arrays.peak_values_device, -INFINITY, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
+
     // Reset the persistent arrays for peak finding
     cudaMemset(peak_arrays.state_candidate_idx, -1, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-    cudaMemset(peak_arrays.state_candidate_vals, -1.0f, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-    cudaMemset(peak_arrays.state_dist_last_peak, 0, field_data.N_src_per_batch * params.N_samples * sizeof(int));
+    cudaMemset(peak_arrays.state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+    cudaMemset(peak_arrays.state_dist_last_peak, params.peak_distance, field_data.N_src_per_batch * params.N_samples * sizeof(int));
     cudaMemset(peak_arrays.state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+    cudaMemset(peak_arrays.last_chunk_data_device, 0.0f, field_data.N_src_per_batch * params.N_samples * 2 * sizeof(float)); // Initialize last chunk data to -1.0f
 }
+
 
 /**
  * @brief Removes the temporary status from the results file
@@ -429,6 +454,7 @@ void process(const ProcessingExternalParams& params) {
         unsigned long objnum_periodograms = (k < field_data.N_src_batch - 1)
             ? field_data.N_src_per_batch
             : (field_data.N_src - objstart_periodograms);
+        int N_periodogram_curves = static_cast<int>(objnum_periodograms) * params.N_samples;
 
         // Load the flux and fluxerr values
         loadChunkData(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
@@ -467,6 +493,13 @@ void process(const ProcessingExternalParams& params) {
 
         // Copy host fluxes and flux errors to device
         copyPhotToDevice(field_data, sources_data, device_arrays, objnum_periodograms);
+        cudaDeviceSynchronize(); // Ensure all operations are complete before proceeding
+
+        cudaStatus = cudaGetLastError();
+        if (cudaStatus != cudaSuccess) {
+            std::cerr << "CUDA error in copyPhotToDevice: " << cudaGetErrorString(cudaStatus) << std::endl;
+            exit(EXIT_FAILURE);
+        }
 
         for (unsigned long i = 0; i < field_data.N_freqs; i += field_data.N_freqs_per_batch) {
             unsigned long N_freqs_current = std::min(field_data.N_freqs_per_batch, field_data.N_freqs - i);
@@ -483,6 +516,12 @@ void process(const ProcessingExternalParams& params) {
                                                                   static_cast<int>(N_freqs_current));    
             cudaDeviceSynchronize();
 
+            cudaStatus = cudaGetLastError();
+            if (cudaStatus != cudaSuccess) {
+                std::cerr << "CUDA error in cudaMakeIndices: " << cudaGetErrorString(cudaStatus) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
             //Compute the periodograms for the current chunk
             cudaDeltaChi2Multibin<<<kernel_params.grid_size_deltaChi2,
                                     kernel_params.block_size_deltaChi2,
@@ -497,6 +536,12 @@ void process(const ProcessingExternalParams& params) {
                                                                              params.N_samples);
             cudaDeviceSynchronize();
 
+            cudaStatus = cudaGetLastError();
+            if (cudaStatus != cudaSuccess) {
+                std::cerr << "CUDA error in cudaDeltaChi2Multibin: " << cudaGetErrorString(cudaStatus) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
             // If this is the first chunk, compute the median and MAD
             if (i == 0) {
                 CudaComputeMedianandMAD<<<kernel_params.grid_size_postprocess,
@@ -504,8 +549,14 @@ void process(const ProcessingExternalParams& params) {
                                                                                   device_arrays.periodogram_medians_device,
                                                                                   device_arrays.periodogram_mads_device,
                                                                                   static_cast<int>(N_freqs_current),
-                                                                                  static_cast<int>(objnum_periodograms) * params.N_samples);
+                                                                                  N_periodogram_curves);
                 cudaDeviceSynchronize();
+
+                cudaStatus = cudaGetLastError();
+                if (cudaStatus != cudaSuccess) {
+                    std::cerr << "CUDA error in CudaComputeMedianandMAD: " << cudaGetErrorString(cudaStatus) << std::endl;
+                    exit(EXIT_FAILURE);
+                }
             }
 
             // Normalize the periodograms by the median and MAD
@@ -514,8 +565,14 @@ void process(const ProcessingExternalParams& params) {
                                                                                   device_arrays.periodogram_medians_device,
                                                                                   device_arrays.periodogram_mads_device,
                                                                                   static_cast<int>(N_freqs_current),
-                                                                                  static_cast<int>(objnum_periodograms) * params.N_samples);
+                                                                                  N_periodogram_curves);
             cudaDeviceSynchronize();
+
+            cudaStatus = cudaGetLastError();
+            if (cudaStatus != cudaSuccess) {
+                std::cerr << "CUDA error in cudaComputeSignificance: " << cudaGetErrorString(cudaStatus) << std::endl;
+                exit(EXIT_FAILURE);
+            }
 
             // Find peaks in this chunk
             cudaFindPeaksChunk<<<kernel_params.grid_size_postprocess,
@@ -524,19 +581,44 @@ void process(const ProcessingExternalParams& params) {
                                                     device_arrays.peak_indices_device,
                                                     device_arrays.peak_values_device,
                                                     static_cast<int>(N_freqs_current),
-                                                    static_cast<int>(objnum_periodograms) * params.N_samples,
+                                                    N_periodogram_curves,
                                                     params.peak_distance,
                                                     params.peak_threshold,
-                                                    static_cast<int>(i)
+                                                    static_cast<int>(i),
                                                     peak_arrays.state_candidate_idx,
                                                     peak_arrays.state_candidate_vals,
                                                     peak_arrays.state_dist_last_peak,
                                                     peak_arrays.state_current_threshold);
             cudaDeviceSynchronize();
+
+            cudaStatus = cudaGetLastError();
+            if (cudaStatus != cudaSuccess) {
+                std::cerr << "CUDA error in cudaFindPeaksChunk: " << cudaGetErrorString(cudaStatus) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
+            // Update the last chunk data for the next iteration
+            // This will store the last two periodogram values from the current frequency chunk (N_freqs_current)
+            // to be used as context by cudaFindPeaksChunk in the next frequency chunk.
+            copyLastChunkData(peak_arrays, device_arrays, N_periodogram_curves, N_freqs_current);
+            cudaDeviceSynchronize();
+
+            cudaStatus = cudaGetLastError();
+            if (cudaStatus != cudaSuccess) {
+                std::cerr << "CUDA error in copyLastChunkData: " << cudaGetErrorString(cudaStatus) << std::endl;
+                exit(EXIT_FAILURE);
+            }
         }
 
         // Copy the peak indices and values back to the host
         copyPeaksToHost(params, field_data, sources_data, device_arrays, objnum_periodograms);
+        cudaDeviceSynchronize();
+
+        cudaStatus = cudaGetLastError();
+        if (cudaStatus != cudaSuccess) {
+            std::cerr << "CUDA error in copyPeaksToHost: " << cudaGetErrorString(cudaStatus) << std::endl;
+            exit(EXIT_FAILURE);
+        }
 
         // Write results to file
         appendResults(results_filename,
@@ -553,7 +635,14 @@ void process(const ProcessingExternalParams& params) {
                       objstart_periodograms);
 
         // Reset the persistent arrays for the next chunk
-        resetStateArrays(peak_arrays, params, field_data);
+        resetPersitentArrays(device_arrays, peak_arrays, params, field_data);
+        cudaDeviceSynchronize(); // Ensure all operations are complete before proceeding
+
+        cudaStatus = cudaGetLastError();
+        if (cudaStatus != cudaSuccess) {
+            std::cerr << "CUDA error in resetPersitentArrays: " << cudaGetErrorString(cudaStatus) << std::endl;
+            exit(EXIT_FAILURE);
+        }
     }
 
     //Remove the .temp extension at the end

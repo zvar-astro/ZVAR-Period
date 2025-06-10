@@ -196,8 +196,8 @@ void processTEST(const ProcessingExternalParams& params) {
         ", Total frequency chunks: " + to_string(field_data.N_freqs_batch) +
         ", Frequencies per chunk: " + to_string(field_data.N_freqs_per_batch));
 
-    // for (unsigned long k = 0; k < field_data.N_src_batch; k++) {
-    for (unsigned long k = 0; k < 1; k++) {
+    for (unsigned long k = 0; k < field_data.N_src_batch; k++) {
+    // for (unsigned long k = 0; k < 2; k++) {
         auto start_loadchunk = chrono::high_resolution_clock::now(); // Time loading chunk
 
         // Get the range of objects to analyze
@@ -205,6 +205,7 @@ void processTEST(const ProcessingExternalParams& params) {
         unsigned long objnum_periodograms = (k < field_data.N_src_batch - 1)
             ? field_data.N_src_per_batch
             : (field_data.N_src - objstart_periodograms);
+        int N_periodogram_curves = static_cast<int>(objnum_periodograms) * params.N_samples;
 
         // Load the flux and fluxerr values
         loadChunkData(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
@@ -212,6 +213,14 @@ void processTEST(const ProcessingExternalParams& params) {
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
         logMessage(params.log_path, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
+
+        // Check the first 10 values of the flux and fluxerr for the 10th last source in the chunk
+        unsigned long last_source_idx = objnum_periodograms - 10;
+        for (unsigned int e = 0; e < 10; ++e) {
+            std::cout << "Chunk " << k << ", Exposure " << e << " before outlier removal: "
+                      << "Flux = " << sources_data.fluxes[last_source_idx * field_data.N_exp + e] << ", "
+                      << "FluxErr = " << sources_data.fluxErrs[last_source_idx * field_data.N_exp + e] << std::endl;
+        }
 
         auto start_removeOutliers = chrono::high_resolution_clock::now(); // Time removing outliers
 
@@ -222,9 +231,22 @@ void processTEST(const ProcessingExternalParams& params) {
         auto duration_removeOutliers = chrono::duration_cast<chrono::milliseconds>(stop_removeOutliers - start_removeOutliers);
         logMessage(params.log_path, "Time to remove outliers: " + to_string(duration_removeOutliers.count()) + " milliseconds");
 
+        for (unsigned int e = 0; e < 10; ++e) {
+            std::cout << "Chunk " << k << ", Exposure " << e << " after outlier removal: "
+                      << "Flux = " << sources_data.fluxes[last_source_idx * field_data.N_exp + e] << ", "
+                      << "FluxErr = " << sources_data.fluxErrs[last_source_idx * field_data.N_exp + e] << std::endl;
+        }
+
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
         processBaselineRemoval(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
+
+        // Check the first 10 values of the flux and fluxerr for the 10th last source after baseline removal
+        for (unsigned int e = 0; e < 10; ++e) {
+            std::cout << "Chunk " << k << ", Exposure " << e << " after baseline removal: "
+                      << "Flux = " << sources_data.fluxes_no_baseline[last_source_idx * field_data.N_exp + e] << ", "
+                      << "FluxErr = " << sources_data.fluxErrs[last_source_idx * field_data.N_exp + e] << std::endl;
+        }
 
         if (!sources_data.success) {
             logMessage(params.log_path, "Failed to remove baseline. Exiting.");
@@ -241,9 +263,10 @@ void processTEST(const ProcessingExternalParams& params) {
         auto duration_removebaseline = chrono::duration_cast<chrono::milliseconds>(stop_removebaseline - start_removebaseline);
         logMessage(params.log_path, "Time to remove baseline: " + to_string(duration_removebaseline.count()) + " milliseconds");
 
+        int batch_to_check = 10;
         // --- DEBUGGING
-        if (k == 0) { // or (k == field_data.N_src_batch - 1) if you use all batches
-            unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
+        if (k == batch_to_check) {
+            unsigned long last_source_idx = objnum_periodograms - 10;
             std::string csv_filename = "last_source_lc.csv";
             std::ofstream csv(csv_filename);
             for (unsigned int e = 0; e < field_data.N_exp; ++e) {
@@ -257,8 +280,16 @@ void processTEST(const ProcessingExternalParams& params) {
             logMessage(params.log_path, "Saved last source of last chunk to " + csv_filename);
         }
 
+        cudaError_t err;
+
         // Copy host fluxes and flux errors to device
         copyPhotToDevice(field_data, sources_data, device_arrays, objnum_periodograms);
+
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA error copyPhotToDevice: " << cudaGetErrorString(err) << std::endl;
+            exit(EXIT_FAILURE);
+        }
 
         for (unsigned long i = 0; i < field_data.N_freqs; i += field_data.N_freqs_per_batch) {
             unsigned long N_freqs_current = std::min(field_data.N_freqs_per_batch, field_data.N_freqs - i);
@@ -278,6 +309,12 @@ void processTEST(const ProcessingExternalParams& params) {
                                                                   static_cast<int>(N_freqs_current));    
             cudaDeviceSynchronize();
 
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA error cudaMakeIndices: " << cudaGetErrorString(err) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
             // Compute the periodograms for the current chunk
             cudaDeltaChi2Multibin<<<kernel_params.grid_size_deltaChi2,
                                     kernel_params.block_size_deltaChi2,
@@ -292,8 +329,107 @@ void processTEST(const ProcessingExternalParams& params) {
                                                                              params.N_samples);
             cudaDeviceSynchronize();
 
-            if (k == 0) {
-                unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA error cudaDeltaChi2Multibin: " << cudaGetErrorString(err) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
+            auto stop_periodogram = chrono::high_resolution_clock::now();
+            auto duration_periodogram = chrono::duration_cast<chrono::milliseconds>(stop_periodogram - start_periodogram);
+            logMessage(params.log_path, "Time to compute periodograms: " + to_string(duration_periodogram.count()) + " milliseconds");
+
+            // If this is the first chunk, compute the median and MAD
+            if (i == 0) {
+
+                // Time the median and MAD computation
+                auto start_median = chrono::high_resolution_clock::now(); // Time computing median and MAD
+
+                CudaComputeMedianandMAD<<<kernel_params.grid_size_postprocess,
+                                          kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                                                                                  device_arrays.periodogram_medians_device,
+                                                                                  device_arrays.periodogram_mads_device,
+                                                                                  static_cast<int>(N_freqs_current),
+                                                                                  N_periodogram_curves);
+                cudaDeviceSynchronize();
+
+                err = cudaGetLastError();
+                if (err != cudaSuccess) {
+                    std::cerr << "CUDA error CudaComputeMedianandMAD: " << cudaGetErrorString(err) << std::endl;
+                    exit(EXIT_FAILURE);
+                }
+
+                auto stop_median = chrono::high_resolution_clock::now();
+                auto duration_median = chrono::duration_cast<chrono::milliseconds>(stop_median - start_median);
+                logMessage(params.log_path, "Time to compute median and MAD: " + to_string(duration_median.count()) + " milliseconds");
+
+                // Transfer medians and MADs to host for the first chunk
+                std::vector<float> periodogram_medians_host(N_periodogram_curves);
+                std::vector<float> periodogram_mads_host(N_periodogram_curves);
+
+                cudaMemcpy(periodogram_medians_host.data(),
+                           device_arrays.periodogram_medians_device,
+                           N_periodogram_curves * sizeof(float),
+                           cudaMemcpyDeviceToHost);
+                cudaMemcpy(periodogram_mads_host.data(),
+                           device_arrays.periodogram_mads_device,
+                           N_periodogram_curves * sizeof(float),
+                           cudaMemcpyDeviceToHost);
+
+                err = cudaGetLastError();
+                if (err != cudaSuccess) {
+                    std::cerr << "CUDA error cudaMemcpy median and MAD: " << cudaGetErrorString(err) << std::endl;
+                    exit(EXIT_FAILURE);
+                }
+
+                // Print the median and MAD for the 10th last source
+                // unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
+                unsigned long last_source_idx = objnum_periodograms - 10;
+                float median = periodogram_medians_host[last_source_idx * params.N_samples];
+                float mad = periodogram_mads_host[last_source_idx * params.N_samples];
+                std::cout << "Last source " << last_source_idx << ": Median = " << median << ", MAD = " << mad << std::endl;
+                
+            }
+
+            // Time the peak finding
+            auto start_findpeaks = chrono::high_resolution_clock::now(); // Time finding peaks
+
+            std::cout << "peak threshold: " << params.peak_threshold << std::endl;
+            std::cout << "peak distance: " << params.peak_distance << std::endl;
+
+            // Find peaks in this chunk
+            // Normalize the periodograms by the median and MAD
+            cudaComputeSignificance<<<kernel_params.grid_size_postprocess,
+                                          kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                                                                                  device_arrays.periodogram_medians_device,
+                                                                                  device_arrays.periodogram_mads_device,
+                                                                                  static_cast<int>(N_freqs_current),
+                                                                                  N_periodogram_curves);
+            cudaDeviceSynchronize();
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA error cudaComputeSignificance: " << cudaGetErrorString(err) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
+            // Print the first 10 values of the periodogram for the 10th last source in this chunk
+            // unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
+            unsigned long last_source_idx = objnum_periodograms - 10;
+            std::vector<float> periodogram_host(N_freqs_current);
+            cudaMemcpy(periodogram_host.data(),
+                       device_arrays.periodograms_device + last_source_idx * N_freqs_current * params.N_samples,
+                       N_freqs_current * sizeof(float),
+                       cudaMemcpyDeviceToHost);
+            std::cout << "10th last source of chunk:" << k << " periodogram values: ";
+            for (unsigned int f = 0; f < 10; ++f) {
+                std::cout << periodogram_host[f] << " ";
+            }
+            std::cout << std::endl;
+
+            if (k == batch_to_check) {
+                // unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
+                unsigned long last_source_idx = objnum_periodograms - 10;
                 std::string csv_filename = "last_source_periodogram.csv";
                 std::ofstream csv(csv_filename);
 
@@ -315,122 +451,49 @@ void processTEST(const ProcessingExternalParams& params) {
                 logMessage(params.log_path, "Saved last source periodogram of first chunk to " + csv_filename);
             }
 
-            
-
-            auto stop_periodogram = chrono::high_resolution_clock::now();
-            auto duration_periodogram = chrono::duration_cast<chrono::milliseconds>(stop_periodogram - start_periodogram);
-            logMessage(params.log_path, "Time to compute periodograms: " + to_string(duration_periodogram.count()) + " milliseconds");
-
-            // If this is the first chunk, compute the median and MAD
-            if (i == 0) {
-
-                // Time the median and MAD computation
-                auto start_median = chrono::high_resolution_clock::now(); // Time computing median and MAD
-
-                //Check the sizing of the periodograms
-                std::cout << "We have : " << static_cast<int>(objnum_periodograms) * params.N_samples << " periodograms of size " << static_cast<int>(N_freqs_current) << std::endl;
-
-                CudaComputeMedianandMAD<<<kernel_params.grid_size_postprocess,
-                                          kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-                                                                                  device_arrays.periodogram_medians_device,
-                                                                                  device_arrays.periodogram_mads_device,
-                                                                                  static_cast<int>(N_freqs_current),
-                                                                                  static_cast<int>(objnum_periodograms) * params.N_samples);
-                
-                cudaDeviceSynchronize();
-                auto stop_median = chrono::high_resolution_clock::now();
-                auto duration_median = chrono::duration_cast<chrono::milliseconds>(stop_median - start_median);
-                logMessage(params.log_path, "Time to compute median and MAD: " + to_string(duration_median.count()) + " milliseconds");
-
-                // Transfer medians and MADs to host for the first chunk
-                std::vector<float> periodogram_medians_host(static_cast<int>(objnum_periodograms) * params.N_samples);
-                std::vector<float> periodogram_mads_host(static_cast<int>(objnum_periodograms) * params.N_samples);
-
-                cudaMemcpy(periodogram_medians_host.data(),
-                           device_arrays.periodogram_medians_device,
-                           static_cast<int>(objnum_periodograms) * params.N_samples * sizeof(float),
-                           cudaMemcpyDeviceToHost);
-                cudaMemcpy(periodogram_mads_host.data(),
-                           device_arrays.periodogram_mads_device,
-                           static_cast<int>(objnum_periodograms) * params.N_samples * sizeof(float),
-                           cudaMemcpyDeviceToHost);
-
-                // Print the median and MAD for the 10th last source
-                unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
-                float median = periodogram_medians_host[last_source_idx * params.N_samples];
-                float mad = periodogram_mads_host[last_source_idx * params.N_samples];
-                std::cout << "Last source " << last_source_idx << ": Median = " << median << ", MAD = " << mad << std::endl;
-                
-            }
-
-            // Time the peak finding
-            auto start_findpeaks = chrono::high_resolution_clock::now(); // Time finding peaks
-
-            std::cout << "peak threshold: " << params.peak_threshold << std::endl;
-            std::cout << "peak distance: " << params.peak_distance << std::endl;
-
-            // Print the first 10 values of the periodogram for the 10th last source
-            unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
-            std::vector<float> periodogram_host(N_freqs_current);
-            cudaMemcpy(periodogram_host.data(),
-                       device_arrays.periodograms_device + last_source_idx * N_freqs_current * params.N_samples,
-                       N_freqs_current * sizeof(float),
-                       cudaMemcpyDeviceToHost);
-            std::cout << "Last source " << last_source_idx << " periodogram values BEFORE FindPeaks: ";
-            for (unsigned int f = 0; f < 10; ++f) {
-                std::cout << periodogram_host[f] << " ";
-            }
-            std::cout << std::endl;
-
             // Find peaks in this chunk
-            // cudaFindPeaksChunk<<<kernel_params.grid_size_postprocess,
-            //             kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-            //                                                     device_arrays.periodogram_medians_device,
-            //                                                     device_arrays.periodogram_mads_device,
-            //                                                     device_arrays.peak_indices_device,
-            //                                                     device_arrays.peak_values_device,
-            //                                                     static_cast<int>(N_freqs_current),
-            //                                                     static_cast<int>(objnum_periodograms) * params.N_samples,
-            //                                                     params.peak_distance,
-            //                                                     params.peak_threshold,
-            //                                                     peak_arrays.state_candidate_idx,
-            //                                                     peak_arrays.state_candidate_vals,
-            //                                                     peak_arrays.state_dist_last_peak,
-            //                                                     peak_arrays.state_current_threshold,
-            //                                                     static_cast<int>(i),
-            //                                                     static_cast<int>(i + N_freqs_current));
-
+            cudaFindPeaksChunk<<<kernel_params.grid_size_postprocess,
+                        kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                                                    peak_arrays.last_chunk_data_device,
+                                                    device_arrays.peak_indices_device,
+                                                    device_arrays.peak_values_device,
+                                                    static_cast<int>(N_freqs_current),
+                                                    N_periodogram_curves,
+                                                    params.peak_distance,
+                                                    params.peak_threshold,
+                                                    static_cast<int>(i),
+                                                    peak_arrays.state_candidate_idx,
+                                                    peak_arrays.state_candidate_vals,
+                                                    peak_arrays.state_dist_last_peak,
+                                                    peak_arrays.state_current_threshold);
             cudaDeviceSynchronize();
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA error cudaFindPeaksChunk: " << cudaGetErrorString(err) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
+            copyLastChunkData(peak_arrays, device_arrays, N_periodogram_curves, N_freqs_current);
+            cudaDeviceSynchronize();
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA error copyLastChunkData: " << cudaGetErrorString(err) << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
             auto stop_findpeaks = chrono::high_resolution_clock::now();
             auto duration_findpeaks = chrono::duration_cast<chrono::milliseconds>(stop_findpeaks - start_findpeaks);
             logMessage(params.log_path, "Time to find peaks: " + to_string(duration_findpeaks.count()) + " milliseconds");
-
-            cudaMemcpy(periodogram_host.data(),
-                       device_arrays.periodograms_device + last_source_idx * N_freqs_current * params.N_samples,
-                       N_freqs_current * sizeof(float),
-                       cudaMemcpyDeviceToHost);
-            std::cout << "Last source " << last_source_idx << " periodogram values AFTER FindPeaks: ";
-            for (unsigned int f = 0; f < 10; ++f) {
-                std::cout << periodogram_host[f] << " ";
-            }
-            std::cout << std::endl;
         }
 
         // Copy the peak indices and values back to the host
         copyPeaksToHost(params, field_data, sources_data, device_arrays, objnum_periodograms);
 
-        // Check if ANY peak_indices are not -1
-        for (unsigned long i = 0; i < objnum_periodograms * params.N_samples; ++i) {
-            for (unsigned int f = 0; f < N_peaks; ++f) {
-                if (sources_data.peak_indices[i * N_peaks + f] != -1) {
-                    std::cout << "Found peaks for source " << (objstart_periodograms + i) << " at frequency index " << f << std::endl;
-                    break; // Exit the loop if we found at least one peak
-                }
-            }
-        }
-
-        if (k == 0) {
-            unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
+        if (k == batch_to_check) {
+            // unsigned long last_source_idx = objstart_periodograms + objnum_periodograms - 10;
+            unsigned long last_source_idx = objnum_periodograms - 10;
             std::string csv_filename = "last_source_peaks.csv";
             std::ofstream csv(csv_filename);
 
@@ -446,7 +509,13 @@ void processTEST(const ProcessingExternalParams& params) {
         }
 
         // Reset the persistent arrays for the next chunk
-        resetStateArrays(peak_arrays, params, field_data);
+        resetPersitentArrays(device_arrays, peak_arrays, params, field_data);
+
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA error resetPersitentArrays: " << cudaGetErrorString(err) << std::endl;
+            exit(EXIT_FAILURE);
+        }
     }
 
     auto stop_full = chrono::high_resolution_clock::now();

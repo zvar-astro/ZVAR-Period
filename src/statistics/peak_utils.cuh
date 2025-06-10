@@ -14,6 +14,7 @@
 #include <device_launch_parameters.h>
 #include <curand.h>
 #include <curand_kernel.h>
+#include <math_constants.h>
 
 #ifndef PEAK_UTILS_H_
 #define PEAK_UTILS_H_
@@ -68,6 +69,8 @@ std::vector<int> find_peaks(
   const float,              // stdev
   const float               // theshold
 );
+
+__global__ void cudaComputeSignificance(float* data, float* median, float* mad, int N_dat, int N_curves);
 
 __device__ bool find_next_peak(
     float* curve_data, size_t& sample_idx, const size_t last_peak_check,

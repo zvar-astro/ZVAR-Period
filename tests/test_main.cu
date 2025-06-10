@@ -617,7 +617,7 @@ TEST_CASE("Check Peak Finding Algorithms", "[Statistics]") {
             FAIL("CUDA kernel launch failed");
         }
 
-        const int N_curves = 10;
+        const int N_curves = 100;
         const int N_dat = 100033;
         const int N_chunks = 5;
         const int chunk_size = (N_dat + N_chunks - 1) / N_chunks; // Max data points in a chunk for one curve
@@ -802,29 +802,6 @@ TEST_CASE("Check Peak Finding Algorithms", "[Statistics]") {
         std::vector<float> peakValues_chunk(N_curves * N_peaks);
         cudaMemcpy(peakIndices_chunk.data(), d_peakIndices_chunk, N_curves * N_peaks * sizeof(int), cudaMemcpyDeviceToHost);
         cudaMemcpy(peakValues_chunk.data(), d_peakValues_chunk, N_curves * N_peaks * sizeof(float), cudaMemcpyDeviceToHost);
-
-        // Insert any remaining candidate peaks
-        // for (int i = 0; i < N_curves; ++i) {
-        //     if (final_candidate_idx[i] != -1) { // <-- Remove the distance check!
-        //         // Insert into the chunked peak arrays if it qualifies
-        //         // Find where to insert (descending order)
-        //         int insert_pos = N_peaks;
-        //         for (int rank = 0; rank < N_peaks; ++rank) {
-        //             if (final_candidate_val[i] > peakValues_chunk[i * N_peaks + rank]) {
-        //                 insert_pos = rank;
-        //                 break;
-        //             }
-        //         }
-        //         if (insert_pos < N_peaks) {
-        //             for (int k = N_peaks - 1; k > insert_pos; --k) {
-        //                 peakIndices_chunk[i * N_peaks + k] = peakIndices_chunk[i * N_peaks + k - 1];
-        //                 peakValues_chunk[i * N_peaks + k] = peakValues_chunk[i * N_peaks + k - 1];
-        //             }
-        //             peakIndices_chunk[i * N_peaks + insert_pos] = final_candidate_idx[i];
-        //             peakValues_chunk[i * N_peaks + insert_pos] = final_candidate_val[i];
-        //         }
-        //     }
-        // }
 
         // Now compare as before
         for (int i = 0; i < N_curves; ++i) {
