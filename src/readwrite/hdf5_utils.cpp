@@ -137,7 +137,7 @@ int get_exposures(hid_t table, double *bjd, int begin, int N, const char *field_
   - 0 on success
   - -1 on error
   */
-    std::cout << "field_name: " << field_name << std::endl;
+    // std::cout << "field_name: " << field_name << std::endl;
   // Create the HDF5 compound datatype for exposures
   hid_t exposures_tid = H5Tcreate(H5T_COMPOUND, sizeof(exposures));
   if (exposures_tid < 0)
@@ -259,6 +259,9 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N, const char *
   - -1 on error
   */
 
+  int status;
+  sources *data;
+
   // Create the HDF5 compound datatype for sources
   hid_t sources_tid = H5Tcreate(H5T_COMPOUND, sizeof(sources));
   if (sources_tid < 0)
@@ -273,52 +276,17 @@ int get_sources(hid_t table, unsigned long *psid, int begin, int N, const char *
     H5Tclose(sources_tid);
     return -1;
   }
+  
+  data = (sources *) malloc(sizeof(sources)*N);
+  status = H5Dread(table,sources_tid,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
 
-  // Process data in chunks to avoid large memory allocation
-  const int CHUNK_SIZE = 10000; // Number of sources to process in each chunk
-  int remaining = N;            // Remaining sources to process
-  int offset = 0;               // Offset for the current chunk
-  int status = 0;
-
-  while (remaining > 0)
-  {
-    int current_chunk_size = std::min(remaining, CHUNK_SIZE);
-
-    // Allocate memory for the current chunk
-    sources *data = (sources *)malloc(sizeof(sources) * current_chunk_size);
-    if (data == NULL)
-    {
-      std::cerr << "Error: Memory allocation failed for sources data." << std::endl;
-      H5Tclose(sources_tid);
-      return -1;
-    }
-
-    // Read data from the HDF5 table
-    status = H5Dread(table, sources_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
-    if (status < 0)
-    {
-      std::cerr << "Error: Unable to read data from HDF5 table." << std::endl;
-      free(data);
-      H5Tclose(sources_tid);
-      return -1;
-    }
-
-    // Populate the psid array with values
-    for (int i = 0; i < current_chunk_size; i++)
-    {
-      psid[offset + i + begin] = data[i].psid;
-    }
-
-    // Free memory for the current chunk
-    free(data);
-
-    // Update remaining sources and offset
-    remaining -= current_chunk_size;
-    offset += current_chunk_size;
+  // Populate psid array with values
+  for (int i = 0; i < N; i++) {
+    psid[i+begin] = data[i].psid;
   }
 
-  // Clean up resources
-  H5Tclose(sources_tid);
+  // Deallocate memory
+  free(data);
 
   return status;
 }
@@ -792,7 +760,8 @@ int get_sourcedata_chunk(std::string filename,
         if (std::isnan(data[i * N + j].flux))
         {
           flux[i * numentry + k] = 0.0f;
-          fluxErr[i * numentry + k] = INFINITY;
+        //   fluxErr[i * numentry + k] = INFINITY;
+        fluxErr[i * numentry + k] = 100000000.0f;
         }
         else
         {
@@ -1192,7 +1161,7 @@ void appendResults(std::string filename, unsigned long *psids, float *ra, float 
   H5Fclose(file_id);
 }
 
-std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int N_d)
+std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int N_d, bool invert = false)
 {
   /*
   Function to identify any timestamps within light
@@ -1201,6 +1170,7 @@ std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int 
   Parameters:
   - time: Vector of times in Julian Date (JD) format
   - N_d : Number of exposures per source
+  - invert: If true, invert the selection to keep *ONLY* deep drilling (1=ignore, 0=keep)
 
   Returns:
   - A vector of unsigned char (1=keep, 0=ignore) indicating
@@ -1262,13 +1232,21 @@ std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int 
     }
   }
 
+    // If invert is true, flip the values in keep vector
+    if (invert) {
+        std::transform(keep.begin(), keep.end(), keep.begin(), [](unsigned char value) {
+            return value == 1 ? 0 : 1;
+        });
+    }
+
   return keep;
 }
 
 std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned char>> initializeFrameData(
   const std::string &filename,
   const char *id_field_name,
-  const char *time_field_name
+  const char *time_field_name,
+  bool invert = false
 )
 {
   /*
@@ -1305,14 +1283,15 @@ std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned 
   check_status(status);
 
   // Get indices of non-deep drilling time stamps
-  std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP);
+  std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP, invert);
   int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
   if (non_dd == 0)
   {
       throw std::runtime_error("No valid BJDs after filtering.");
   }
 
-  // Erase the deep drilling BJDs from bjd vector
+  // Erase the deep drilling BJDs from bjd vector,
+  // or if invert is true, erase non-deep drilling BJDs
   for (int i = NEXP-1; i >= 0; i--) {
     if (dd_index[i] == 0) {
         h_bjd.erase(h_bjd.begin() + i);

@@ -123,28 +123,147 @@ __device__ int partition(float* array, int left, int right, int pivotIndex) {
 }
 
 
-__global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads, int N_dat, int N_curves) {
-    /*
-    Torben's Median Algorithm. This algorithm requires no intermediate arrays. 
-    Computes the median and MAD of N_curves of N_data points each.
+// __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads, int N_dat, int N_curves) {
+//     /*
+//     Torben's Median Algorithm. This algorithm requires no intermediate arrays. 
+//     Computes the median and MAD of N_curves of N_data points each.
 
-    data = pointer to the data (N_dat * N_curves)
-    medians = pointer to the output array for medians (N_curves)
-    mads = pointer to the output array for MADs (N_curves)
-    N_dat = number of data points in each curve
-    N_curves = number of curves
-    */
+//     data = pointer to the data (N_dat * N_curves)
+//     medians = pointer to the output array for medians (N_curves)
+//     mads = pointer to the output array for MADs (N_curves)
+//     N_dat = number of data points in each curve
+//     N_curves = number of curves
+//     */
+//     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+//     if (idx < N_curves) {
+//         float* curve_data = data + idx * N_dat;
+
+//         // Step 1: Find min/max ignoring NaNs
+//         float min = NAN, max = NAN;
+//         int valid_count = 0;
+//         for (int i = 0; i < N_dat; i++) {
+//             float val = curve_data[i];
+//             if (!isnan(val)) {
+//                 if (valid_count == 0) min = max = val;
+//                 if (val < min) min = val;
+//                 if (val > max) max = val;
+//                 valid_count++;
+//             }
+//         }
+//         if (valid_count == 0) {
+//             medians[idx] = NAN;
+//             mads[idx] = NAN;
+//             return;
+//         }
+
+//         // Step 2: Torben's median, ignoring NaNs
+//         float guess, maxltguess, mingtguess;
+//         int less, greater, equal;
+//         while (true) {
+//             guess = (min + max) / 2.0f;
+//             less = greater = equal = 0;
+//             maxltguess = min;
+//             mingtguess = max;
+//             for (int i = 0; i < N_dat; i++) {
+//                 float val = curve_data[i];
+//                 if (isnan(val)) continue;
+//                 if (val < guess) {
+//                     less++;
+//                     if (val > maxltguess) maxltguess = val;
+//                 } else if (val > guess) {
+//                     greater++;
+//                     if (val < mingtguess) mingtguess = val;
+//                 } else {
+//                     equal++;
+//                 }
+//             }
+//             if (less <= (valid_count + 1) / 2 && greater <= (valid_count + 1) / 2) break;
+//             else if (less > greater) max = maxltguess;
+//             else min = mingtguess;
+//         }
+//         float median_value;
+//         if (less >= (valid_count + 1) / 2) {
+//             median_value = maxltguess;
+//         } else if (less + equal >= (valid_count + 1) / 2) {
+//             median_value = guess;
+//         } else {
+//             median_value = mingtguess;
+//         }
+//         medians[idx] = median_value;
+
+//         // Step 3: MAD min/max ignoring NaNs
+//         min = max = NAN;
+//         valid_count = 0;
+//         for (int i = 0; i < N_dat; i++) {
+//             float val = curve_data[i];
+//             if (!isnan(val)) {
+//                 float abs_diff = fabsf(val - median_value);
+//                 if (valid_count == 0) min = max = abs_diff;
+//                 if (abs_diff < min) min = abs_diff;
+//                 if (abs_diff > max) max = abs_diff;
+//                 valid_count++;
+//             }
+//         }
+//         if (valid_count == 0) {
+//             mads[idx] = NAN;
+//             return;
+//         }
+
+//         // Step 4: Torben's MAD, ignoring NaNs
+//         while (true) {
+//             guess = (min + max) / 2.0f;
+//             less = greater = equal = 0;
+//             maxltguess = min;
+//             mingtguess = max;
+//             for (int i = 0; i < N_dat; i++) {
+//                 float val = curve_data[i];
+//                 if (isnan(val)) continue;
+//                 float abs_diff = fabsf(val - median_value);
+//                 if (abs_diff < guess) {
+//                     less++;
+//                     if (abs_diff > maxltguess) maxltguess = abs_diff;
+//                 } else if (abs_diff > guess) {
+//                     greater++;
+//                     if (abs_diff < mingtguess) mingtguess = abs_diff;
+//                 } else {
+//                     equal++;
+//                 }
+//             }
+//             if (less <= (valid_count + 1) / 2 && greater <= (valid_count + 1) / 2) break;
+//             else if (less > greater) max = maxltguess;
+//             else min = mingtguess;
+//         }
+//         float mad_value;
+//         if (less >= (valid_count + 1) / 2) {
+//             mad_value = maxltguess;
+//         } else if (less + equal >= (valid_count + 1) / 2) {
+//             mad_value = guess;
+//         } else {
+//             mad_value = mingtguess;
+//         }
+//         mads[idx] = mad_value;
+
+//         if (idx == 474) {
+//             printf("Device array median in function for src_idx %d: %f\n", 474, medians[idx]);
+//             printf("Device array mad in function for src_idx %d: %f\n", 474, mads[idx]);
+//         }
+//     }
+// }
+
+
+__global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads, int N_dat, int N_curves) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N_curves) {
         float* curve_data = data + idx * N_dat;
 
-        // Step 1: Find min/max ignoring NaNs
+        // Step 1: Find min/max ignoring NaNs, zeros, and infinities
         float min = NAN, max = NAN;
         int valid_count = 0;
         for (int i = 0; i < N_dat; i++) {
             float val = curve_data[i];
-            if (!isnan(val)) {
+            if (!isnan(val) && val != 0.0f && isfinite(val)) {
                 if (valid_count == 0) min = max = val;
                 if (val < min) min = val;
                 if (val > max) max = val;
@@ -157,9 +276,10 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
             return;
         }
 
-        // Step 2: Torben's median, ignoring NaNs
+        // Step 2: Torben's median, ignoring NaNs, zeros, and infinities
         float guess, maxltguess, mingtguess;
         int less, greater, equal;
+        int iter = 0;
         while (true) {
             guess = (min + max) / 2.0f;
             less = greater = equal = 0;
@@ -167,7 +287,7 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
             mingtguess = max;
             for (int i = 0; i < N_dat; i++) {
                 float val = curve_data[i];
-                if (isnan(val)) continue;
+                if (isnan(val) || val == 0.0f || !isfinite(val)) continue;
                 if (val < guess) {
                     less++;
                     if (val > maxltguess) maxltguess = val;
@@ -181,6 +301,7 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
             if (less <= (valid_count + 1) / 2 && greater <= (valid_count + 1) / 2) break;
             else if (less > greater) max = maxltguess;
             else min = mingtguess;
+            iter++;
         }
         float median_value;
         if (less >= (valid_count + 1) / 2) {
@@ -192,17 +313,19 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
         }
         medians[idx] = median_value;
 
-        // Step 3: MAD min/max ignoring NaNs
+        // Step 3: MAD min/max ignoring NaNs, zeros, and infinities
         min = max = NAN;
         valid_count = 0;
         for (int i = 0; i < N_dat; i++) {
             float val = curve_data[i];
-            if (!isnan(val)) {
+            if (!isnan(val) && val != 0.0f && isfinite(val)) {
                 float abs_diff = fabsf(val - median_value);
-                if (valid_count == 0) min = max = abs_diff;
-                if (abs_diff < min) min = abs_diff;
-                if (abs_diff > max) max = abs_diff;
-                valid_count++;
+                if (!isnan(abs_diff) && abs_diff != 0.0f && isfinite(abs_diff)) {
+                    if (valid_count == 0) min = max = abs_diff;
+                    if (abs_diff < min) min = abs_diff;
+                    if (abs_diff > max) max = abs_diff;
+                    valid_count++;
+                }
             }
         }
         if (valid_count == 0) {
@@ -210,7 +333,8 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
             return;
         }
 
-        // Step 4: Torben's MAD, ignoring NaNs
+        // Step 4: Torben's MAD, ignoring NaNs, zeros, and infinities
+        iter = 0;
         while (true) {
             guess = (min + max) / 2.0f;
             less = greater = equal = 0;
@@ -218,8 +342,9 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
             mingtguess = max;
             for (int i = 0; i < N_dat; i++) {
                 float val = curve_data[i];
-                if (isnan(val)) continue;
+                if (isnan(val) || val == 0.0f || !isfinite(val)) continue;
                 float abs_diff = fabsf(val - median_value);
+                if (isnan(abs_diff) || abs_diff == 0.0f || !isfinite(abs_diff)) continue;
                 if (abs_diff < guess) {
                     less++;
                     if (abs_diff > maxltguess) maxltguess = abs_diff;
@@ -233,6 +358,7 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
             if (less <= (valid_count + 1) / 2 && greater <= (valid_count + 1) / 2) break;
             else if (less > greater) max = maxltguess;
             else min = mingtguess;
+            iter++;
         }
         float mad_value;
         if (less >= (valid_count + 1) / 2) {

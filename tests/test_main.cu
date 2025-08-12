@@ -926,7 +926,8 @@ TEST_CASE("Check Processing Output", "[Processing]") {
         fluxErr_field_name
     );
 
-    processTEST(params);
+    // processTEST(params);
+    process(params);
 }
 
 /*

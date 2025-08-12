@@ -56,8 +56,12 @@ struct ProcessingExternalParams {
 
     // Peak Finding Parameters
     int peak_distance = 300; // Minimum distance between peaks
-    float peak_threshold = 1.0f; // Minimum significance threshold
+    float peak_threshold = 10.0f; // Minimum significance threshold
     bool success = false; // To indicate if loading was successful
+
+    //Seasonal/Deep Drilling Modes
+    bool seasonal = false; // Default: not seasonal
+    bool deep_drilling = false; // Default: remove deep drilling
 
     // Constructor
     ProcessingExternalParams(
@@ -73,13 +77,17 @@ struct ProcessingExternalParams {
         const std::string& time_field_name = "",
         const std::string& flux_field_name = "",
         const std::string& fluxErr_field_name = "",
-        double f_min = 1.0 / 10.0,
-        double f_max = 1440.0 / 5.0,
+        bool seasonal = false,
+        bool deep_drilling = false,
+        double f_min = 1.0 / 10.0, // 10 day max period
+        double f_max = 1440.0 / 5.0, // 5 min min period
+        // double f_max = 1.0 / 50.0, // 50 day min period
+        // double f_min = 1.0 / (3.0 * 365), // 3 year max period
         int freq_oversampling = 3,
         int model_id = 15,
         const std::vector<int>& N_bins = {20, 10, 5},
         int peak_distance = 300,
-        float peak_threshold = 0.1f
+        float peak_threshold = 10.0f
     )
         : device(device),
           num_omp_threads(num_omp_threads),
@@ -100,6 +108,8 @@ struct ProcessingExternalParams {
           N_samples(N_bins.size()),
           peak_distance(peak_distance),
           peak_threshold(peak_threshold),
+          seasonal(seasonal),
+          deep_drilling(deep_drilling),
           success(false) {}
 };
 

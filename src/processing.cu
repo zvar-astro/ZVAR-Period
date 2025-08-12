@@ -22,7 +22,8 @@ FieldData loadAndPrepareFieldData(const ProcessingExternalParams& params) {
         std::tie(field_data.N_exp, field_data.N_src, field_data.times, field_data.dd_indices) =
             initializeFrameData(params.input_hdf_filename,
                                 params.id_field_name.c_str(),
-                                params.time_field_name.c_str());
+                                params.time_field_name.c_str(),
+                                params.deep_drilling);
         field_data.success = true;
         logMessage(params.log_path, "Frame data loaded. N_exp: " + std::to_string(field_data.N_exp) + ", N_src: " + std::to_string(field_data.N_src));
     } catch (const std::exception& e) {
@@ -300,8 +301,8 @@ void copyPeaksToHost(const ProcessingExternalParams& params, FieldData& field_da
 
     cudaMemcpy(sources_data.peak_indices.data(), device_arrays.peak_indices_device, objnum_periodograms * params.N_samples * N_peaks * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(sources_data.peak_values.data(), device_arrays.peak_values_device, objnum_periodograms * params.N_samples * N_peaks * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(sources_data.periodogram_medians.data(), device_arrays.periodogram_medians_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(sources_data.periodogram_mads.data(), device_arrays.periodogram_mads_device, objnum_periodograms * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(sources_data.periodogram_medians.data(), device_arrays.periodogram_medians_device, objnum_periodograms * params.N_samples * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(sources_data.periodogram_mads.data(), device_arrays.periodogram_mads_device, objnum_periodograms * params.N_samples * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Find the peak frequencies from the indices
     for (unsigned long j = 0; j < objnum_periodograms * params.N_samples; j++) {
@@ -501,6 +502,8 @@ void process(const ProcessingExternalParams& params) {
             exit(EXIT_FAILURE);
         }
 
+        auto start_processing = chrono::high_resolution_clock::now(); // Time processing periodograms
+
         for (unsigned long i = 0; i < field_data.N_freqs; i += field_data.N_freqs_per_batch) {
             unsigned long N_freqs_current = std::min(field_data.N_freqs_per_batch, field_data.N_freqs - i);
 
@@ -619,6 +622,51 @@ void process(const ProcessingExternalParams& params) {
             std::cerr << "CUDA error in copyPeaksToHost: " << cudaGetErrorString(cudaStatus) << std::endl;
             exit(EXIT_FAILURE);
         }
+
+        // vector<float> amplitudes(objnum_periodograms, 0.0f);
+
+        // // Compute the amplitude for each light curve
+        // computeAmplitudes(sources_data.fluxes_no_baseline, amplitudes, field_data.N_exp, objnum_periodograms);
+
+        // // Append the flux medians and MADS, as well as periodogram medians and MADS to a CSV file
+        // //Set the chunk number boolean to true if this is the first chunk
+        // bool is_first_chunk = (k == 0);
+        // std::string flux_stats_filename = "flux_statistics.csv";
+        // writeFluxStatisticsToCSV(flux_stats_filename,
+        //                          sources_data.fluxes_medians,
+        //                          sources_data.fluxes_mads,
+        //                          amplitudes,
+        //                          objstart_periodograms,
+        //                          is_first_chunk);
+
+        // std::string periodogram_stats_filename = "periodogram_statistics";
+        // writePeriodogramStatisticsToCSV(periodogram_stats_filename,
+        //                                 sources_data.periodogram_medians,
+        //                                 sources_data.periodogram_mads,
+        //                                 objstart_periodograms,
+        //                                 field_data.N_src_per_batch,
+        //                                 params.N_samples,
+        //                                 is_first_chunk);
+
+        // string object_filename = "object_" + std::to_string(src_idx) + "_chunk_" + std::to_string(k) + ".csv";
+        // // Check if the src idx is in the current chunk
+        // if (src_idx >= objstart_periodograms && src_idx < objstart_periodograms + objnum_periodograms) {
+        //     // Save the times and fluxes for the specific source to a CSV file
+        //     unsigned long object_index = src_idx - objstart_periodograms; // Get the index of the object in the current chunk
+        //     saveObjectTimesAndFluxToCSV(object_filename,
+        //                                  field_data.times,
+        //                                 //  sources_data.fluxes_no_baseline,
+        //                                 sources_data.fluxes,
+        //                                  sources_data.fluxErrs,
+        //                                  field_data.N_exp,
+        //                                  object_index);
+        // }
+
+        auto stop_processing = chrono::high_resolution_clock::now();
+        auto duration_processing = chrono::duration_cast<chrono::milliseconds>(stop_processing - start_processing);
+
+        logMessage(params.log_path, "Time to process periodograms for chunk:" + to_string(k) +
+            ": " + to_string(duration_processing.count()) + " milliseconds");
 
         // Write results to file
         appendResults(results_filename,
