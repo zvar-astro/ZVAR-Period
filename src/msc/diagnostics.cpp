@@ -29,6 +29,27 @@ void computeAmplitudes(const std::vector<float>& fluxes_no_baseline,
     }
 }
 
+void computeAvgError(const std::vector<float>& flux_errs,
+                     std::vector<float>& fluxes_avg_var,
+                     unsigned long N_exp,
+                     unsigned long N_src) {
+    /*
+    Computes the average error for each source, ignoring NaN, infinity, and zero values
+    */
+    for (unsigned long i = 0; i < N_src; ++i) {
+        float sum_var = 0.0f;
+        unsigned long count = 0;
+        for (unsigned long j = 0; j < N_exp; ++j) {
+            float val = flux_errs[i * N_exp + j];
+            if (!std::isnan(val) && !std::isinf(val) && val != 0.0f) {
+                sum_var += (val);
+                ++count;
+            }
+        }
+        fluxes_avg_var[i] = (count > 0) ? (sum_var / count) : 0.0f;
+    }
+}
+
 void saveObjectTimesAndFluxToCSV(const std::string& filename,
                                  const std::vector<float>& times,
                                  const std::vector<float>& fluxes_no_baseline,
@@ -82,7 +103,7 @@ void writeFluxStatisticsToCSV(const std::string& filename,
     // Open the file in append mode if not the first chunk, otherwise overwrite
     if (is_first_chunk) {
         file.open(filename, std::ios::out); // Overwrite file
-        file << "SourceIndex,FluxMedian,FluxMAD,FluxAmplitude\n"; // Write header
+        file << "SourceIndex,FluxMedian,FluxMAD,FluxAvgVar\n"; // Write header
     } else {
         file.open(filename, std::ios::app); // Append to file
     }

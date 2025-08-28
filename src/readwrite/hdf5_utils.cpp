@@ -760,8 +760,7 @@ int get_sourcedata_chunk(std::string filename,
         if (std::isnan(data[i * N + j].flux))
         {
           flux[i * numentry + k] = 0.0f;
-        //   fluxErr[i * numentry + k] = INFINITY;
-        fluxErr[i * numentry + k] = 100000000.0f;
+          fluxErr[i * numentry + k] = INFINITY;
         }
         else
         {
@@ -1161,7 +1160,7 @@ void appendResults(std::string filename, unsigned long *psids, float *ra, float 
   H5Fclose(file_id);
 }
 
-std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int N_d, bool invert = false)
+std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int N_d)
 {
   /*
   Function to identify any timestamps within light
@@ -1170,7 +1169,6 @@ std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int 
   Parameters:
   - time: Vector of times in Julian Date (JD) format
   - N_d : Number of exposures per source
-  - invert: If true, invert the selection to keep *ONLY* deep drilling (1=ignore, 0=keep)
 
   Returns:
   - A vector of unsigned char (1=keep, 0=ignore) indicating
@@ -1231,80 +1229,145 @@ std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int 
       }
     }
   }
-
-    // If invert is true, flip the values in keep vector
-    if (invert) {
-        std::transform(keep.begin(), keep.end(), keep.begin(), [](unsigned char value) {
-            return value == 1 ? 0 : 1;
-        });
-    }
-
   return keep;
 }
+
+// std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned char>> initializeFrameData(
+//   const std::string &filename,
+//   const char *id_field_name,
+//   const char *time_field_name,
+//   bool deep_drilling
+// )
+// {
+//   /*
+//   Function to initialize frame data from an HDF5 file.
+//   Parameters:
+//   - filename: Name of the HDF5 file
+//   - id_field_name: Name of the field for source IDs
+//   - time_field_name: Name of the field for time values
+//   Returns:
+//   - A tuple containing:
+//     - NEXP: Number of exposures
+//     - NSRC: Number of sources
+//     - time: Vector of time values
+//     - deep_drilling_flags: Vector indicating which timestamps to keep
+//   */
+
+//   // Variables to store number of exposures & sources
+//   int NEXP = get_number_of_rows_wrapper(filename, "/data/exposures");
+//   int NSRC = get_number_of_rows_wrapper(filename, "/data/sources");
+
+//   if (NEXP <= 0 || NSRC <= 0)
+//   {
+//       throw std::runtime_error("Invalid number of exposures or sources.");
+//   }
+
+//   // Use NEXP and NSRC to initialize time and source vectors
+//   std::vector<double> h_bjd(NEXP, 0.0);         // BJD must be read in with double precision
+//   std::vector<unsigned long> sourceid(NSRC, 0); // Source IDs
+
+//   // Read HDF5 tables and load into vectors
+//   int status = get_exposures_wrapper(filename, h_bjd.data(), 0, NEXP, time_field_name);
+//   check_status(status);
+//   status = get_sources_wrapper(filename, sourceid.data(), 0, NSRC, id_field_name);
+//   check_status(status);
+
+//   // Get indices of non-deep drilling time stamps
+//   std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP, invert);
+//   int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
+//   if (non_dd == 0)
+//   {
+//       throw std::runtime_error("No valid BJDs after filtering.");
+//   }
+
+//   // Erase the deep drilling BJDs from bjd vector,
+//   // or if invert is true, erase non-deep drilling BJDs
+//   for (int i = NEXP-1; i >= 0; i--) {
+//     if (dd_index[i] == 0) {
+//         h_bjd.erase(h_bjd.begin() + i);
+//     }
+//   }
+//   NEXP = non_dd; // Update number of exposures
+
+//   // Subtract minimum BJD and convert to float
+//   std::vector<float> time(NEXP,0.0f); // Time values after subtracting mean BJD
+//   double bjdref = std::min_element(h_bjd.begin(), h_bjd.end())[0];
+//   for (int i = 0; i < NEXP; i++) {
+//     time[i] = static_cast<float>(h_bjd[i] - bjdref);
+//   }
+
+//   return std::make_tuple(NEXP, NSRC, time, dd_index);
+// }
 
 std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned char>> initializeFrameData(
   const std::string &filename,
   const char *id_field_name,
   const char *time_field_name,
-  bool invert = false
-)
-{
-  /*
-  Function to initialize frame data from an HDF5 file.
-  Parameters:
-  - filename: Name of the HDF5 file
-  - id_field_name: Name of the field for source IDs
-  - time_field_name: Name of the field for time values
-  Returns:
-  - A tuple containing:
+  bool deep_drilling
+) {
+    /*
+    Function to initialize frame data from an HDF5 file.
+    Parameters:
+    - filename: Name of the HDF5 file
+    - id_field_name: Name of the field for source IDs
+    - time_field_name: Name of the field for time values
+    - deep_drilling: Boolean flag indicating whether to keep deep drilling timestamps (false removes them)
+    Returns:
+    - A tuple containing:
     - NEXP: Number of exposures
     - NSRC: Number of sources
     - time: Vector of time values
     - deep_drilling_flags: Vector indicating which timestamps to keep
-  */
+    */
 
-  // Variables to store number of exposures & sources
-  int NEXP = get_number_of_rows_wrapper(filename, "/data/exposures");
-  int NSRC = get_number_of_rows_wrapper(filename, "/data/sources");
+    // Variables to store number of exposures & sources
+    int NEXP = get_number_of_rows_wrapper(filename, "/data/exposures");
+    int NSRC = get_number_of_rows_wrapper(filename, "/data/sources");
 
-  if (NEXP <= 0 || NSRC <= 0)
-  {
-      throw std::runtime_error("Invalid number of exposures or sources.");
-  }
-
-  // Use NEXP and NSRC to initialize time and source vectors
-  std::vector<double> h_bjd(NEXP, 0.0);         // BJD must be read in with double precision
-  std::vector<unsigned long> sourceid(NSRC, 0); // Source IDs
-
-  // Read HDF5 tables and load into vectors
-  int status = get_exposures_wrapper(filename, h_bjd.data(), 0, NEXP, time_field_name);
-  check_status(status);
-  status = get_sources_wrapper(filename, sourceid.data(), 0, NSRC, id_field_name);
-  check_status(status);
-
-  // Get indices of non-deep drilling time stamps
-  std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP, invert);
-  int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
-  if (non_dd == 0)
-  {
-      throw std::runtime_error("No valid BJDs after filtering.");
-  }
-
-  // Erase the deep drilling BJDs from bjd vector,
-  // or if invert is true, erase non-deep drilling BJDs
-  for (int i = NEXP-1; i >= 0; i--) {
-    if (dd_index[i] == 0) {
-        h_bjd.erase(h_bjd.begin() + i);
+    if (NEXP <= 0 || NSRC <= 0)
+    {
+        throw std::runtime_error("Invalid number of exposures or sources.");
     }
-  }
-  NEXP = non_dd; // Update number of exposures
 
-  // Subtract minimum BJD and convert to float
-  std::vector<float> time(NEXP,0.0f); // Time values after subtracting mean BJD
-  double bjdref = std::min_element(h_bjd.begin(), h_bjd.end())[0];
-  for (int i = 0; i < NEXP; i++) {
-    time[i] = static_cast<float>(h_bjd[i] - bjdref);
-  }
+    // Use NEXP and NSRC to initialize time and source vectors
+    std::vector<double> h_bjd(NEXP, 0.0);         // BJD must be read in with double precision
+    std::vector<unsigned long> sourceid(NSRC, 0); // Source IDs
 
-  return std::make_tuple(NEXP, NSRC, time, dd_index);
+    // Read HDF5 tables and load into vectors
+    int status = get_exposures_wrapper(filename, h_bjd.data(), 0, NEXP, time_field_name);
+    check_status(status);
+    status = get_sources_wrapper(filename, sourceid.data(), 0, NSRC, id_field_name);
+    check_status(status);
+
+    // Get indices of non-deep drilling time stamps
+    std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP); // 1=keep, 0=deep drilling
+    int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
+
+    if (!deep_drilling) {
+    // Remove deep drilling BJDs if deep_drilling is false
+        for (int i = NEXP-1; i >= 0; i--) {
+            if (dd_index[i] == 0) {
+                h_bjd.erase(h_bjd.begin() + i);
+            }
+        }
+        NEXP = non_dd; // Update number of exposures
+    }
+    else {
+        // If deep_drilling is true, set all dd_index values to 1
+        std::fill(dd_index.begin(), dd_index.end(), 1);
+    }
+
+    // If deep_drilling is true, keep all BJDs (do not erase)
+    if ((!deep_drilling && non_dd == 0) || (deep_drilling && NEXP == 0)) {
+        throw std::runtime_error("No valid BJDs after filtering.");
+    }
+
+    // Subtract minimum BJD and convert to float
+    std::vector<float> time(h_bjd.size(), 0.0f); // Time values after subtracting mean BJD
+    double bjdref = *std::min_element(h_bjd.begin(), h_bjd.end());
+    for (size_t i = 0; i < h_bjd.size(); i++) {
+        time[i] = static_cast<float>(h_bjd[i] - bjdref);
+    }
+
+    return std::make_tuple(h_bjd.size(), NSRC, time, dd_index);
 }

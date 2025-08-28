@@ -7,6 +7,7 @@
 #include <string>
 #include <chrono>
 #include <ctime>
+#include <cmath>
 
 void logMessage(const std::string& logfile, const std::string& message);
 
@@ -14,6 +15,11 @@ void computeAmplitudes(const std::vector<float>& fluxes_no_baseline,
                        std::vector<float>& amplitudes,
                        unsigned long N_exp,
                        unsigned long N_src);
+
+void computeAvgError(const std::vector<float>& flux_errs,
+                     std::vector<float>& fluxes_avg_var,
+                     unsigned long N_exp,
+                     unsigned long N_src);
 
 void saveObjectTimesAndFluxToCSV(const std::string& filename,
                                  const std::vector<float>& times,

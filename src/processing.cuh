@@ -59,9 +59,10 @@ struct ProcessingExternalParams {
     float peak_threshold = 10.0f; // Minimum significance threshold
     bool success = false; // To indicate if loading was successful
 
-    //Seasonal/Deep Drilling Modes
+    //Seasonal/Deep Drilling/Baseline Removal Modes
     bool seasonal = false; // Default: not seasonal
     bool deep_drilling = false; // Default: remove deep drilling
+    bool remove_baseline = true; // Default: not long period
 
     // Constructor
     ProcessingExternalParams(
@@ -79,6 +80,7 @@ struct ProcessingExternalParams {
         const std::string& fluxErr_field_name = "",
         bool seasonal = false,
         bool deep_drilling = false,
+        bool remove_baseline = true,
         double f_min = 1.0 / 10.0, // 10 day max period
         double f_max = 1440.0 / 5.0, // 5 min min period
         // double f_max = 1.0 / 50.0, // 50 day min period
@@ -110,6 +112,7 @@ struct ProcessingExternalParams {
           peak_threshold(peak_threshold),
           seasonal(seasonal),
           deep_drilling(deep_drilling),
+          remove_baseline(remove_baseline),
           success(false) {}
 };
 

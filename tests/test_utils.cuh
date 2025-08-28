@@ -3,6 +3,7 @@
 #include "../src/periodograms/FPW/kernels.cuh"
 #include "../src/statistics/peak_utils.cuh"
 #include "../src/statistics/polyfit.cuh"
+#include "../src/msc/diagnostics.h"
 #include <iostream>
 #include <fstream>
 #include <string>

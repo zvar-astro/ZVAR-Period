@@ -6,33 +6,8 @@ import sys
 import time
 import os
 import signal
-from multiprocessing import Semaphore
-
-# def create_semaphores():
-#     semaphores = [Semaphore(1) for _ in range(4)]
-#     semaphore_names = [f"/device_{i}_lock" for i in range(4)]
-#     return semaphores, semaphore_names
-
-# def cleanup_semaphores(semaphore_names):
-#     # Remove specified semaphore names
-#     for name in semaphore_names:
-#         try:
-#             os.unlink(name)
-#         except FileNotFoundError:
-#             pass
-
-#     # Remove all semaphores from /dev/shm directory
-#     shm_dir = '/dev/shm'
-#     for filename in os.listdir(shm_dir):
-#         filepath = os.path.join(shm_dir, filename)
-#         if filename.startswith('sem.'):
-#             try:
-#                 os.unlink(filepath)
-#             except FileNotFoundError:
-#                 pass
 
 def signal_handler(sig, frame):
-    # cleanup_semaphores(semaphore_names)
     sys.exit(0)
 
 def run_cudaFPW(filepath, device, datatype, stop_event):
@@ -125,8 +100,6 @@ if __name__ == "__main__":
         print("ERROR: band must be one of 'g' or 'r'")
         print("Usage: python runField.py <field> <algorithm> [<band>]")
         sys.exit(1)
-
-    # semaphores, semaphore_names = create_semaphores()
     
     task_queue = queue.Queue()
     
@@ -157,17 +130,14 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         stop_event.set()
         print("Exiting due to keyboard interrupt")
-        # cleanup_semaphores(semaphore_names)
         sys.exit(0)
     
     for thread in threads:
         thread.join()
 
     if stop_event.is_set():
-        # cleanup_semaphores(semaphore_names)
         print("An error occurred in one of the threads. Exiting with error code.")
         sys.exit(1)
     else:
-        # cleanup_semaphores(semaphore_names)
         print("All files completed successfully.")
         sys.exit(0)

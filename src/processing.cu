@@ -203,7 +203,11 @@ void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArra
                 sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
                 sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
             } else { // Otherwise, set the flux to the median subtracted value
+
+
+                /*WARNING, TEMPORARY TEST!!!!!!!!!!*/
                 sources_data.fluxes[i * field_data.N_exp + j] = flux;
+                sources_data.fluxErrs[i * field_data.N_exp + j] = std; // Set error to the MAD converted to STD
             }
         }
     }
@@ -422,6 +426,12 @@ void process(const ProcessingExternalParams& params) {
     unsigned long objstart_periodograms, objnum_periodograms;
     SourcesData sources_data(params, field_data); // Initialize sources data with field data
 
+    //Print timestamps to debug
+    for (int i = 0; i < field_data.N_exp; i++) {
+        std::cout << "exp " << i << ": " << std::setprecision(std::numeric_limits<float>::max_digits10)
+                << field_data.times[i] << std::endl;
+    }
+
     // --- Initialize Kernel Launch Parameters ---
     KernelLaunchParams kernel_params(params, field_data);
 
@@ -475,7 +485,14 @@ void process(const ProcessingExternalParams& params) {
 
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
-        processBaselineRemoval(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
+        if (params.remove_baseline) {
+            processBaselineRemoval(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
+        }
+        else {
+            // If not removing baseline, just copy the fluxes to the no baseline array
+            sources_data.fluxes_no_baseline = sources_data.fluxes;
+            sources_data.success = true;
+        }
 
         if (!sources_data.success) {
             logMessage(params.log_path, "Failed to remove baseline. Exiting.");
@@ -509,6 +526,7 @@ void process(const ProcessingExternalParams& params) {
 
             cudaMemcpy(device_arrays.freqs_device, field_data.fgrid.data() + i, N_freqs_current * sizeof(float), cudaMemcpyHostToDevice);
 
+            auto start_FPW = std::chrono::high_resolution_clock::now();
             // Compute indices for the current chunk
             cudaMakeIndices<<<kernel_params.grid_size_indices,
                               kernel_params.block_size_indices>>>(device_arrays.t_device,
@@ -545,15 +563,33 @@ void process(const ProcessingExternalParams& params) {
                 exit(EXIT_FAILURE);
             }
 
+            auto stop_FPW = std::chrono::high_resolution_clock::now();
+            auto duration_FPW = std::chrono::duration_cast<std::chrono::milliseconds>(stop_FPW - start_FPW);
+            std::cout << "Time taken for cudaDeltaChi2Multibin: " << duration_FPW.count() << " ms" << std::endl;
+
             // If this is the first chunk, compute the median and MAD
             if (i == 0) {
-                CudaComputeMedianandMAD<<<kernel_params.grid_size_postprocess,
+
+                auto start_means = std::chrono::high_resolution_clock::now();
+                // CudaComputeMedianandMAD<<<kernel_params.grid_size_postprocess,
+                //                           kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                //                                                                   device_arrays.periodogram_medians_device,
+                //                                                                   device_arrays.periodogram_mads_device,
+                //                                                                   static_cast<int>(N_freqs_current),
+                //                                                                   N_periodogram_curves);
+
+                CudaComputeMeanandSTD<<<kernel_params.grid_size_postprocess,
                                           kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-                                                                                  device_arrays.periodogram_medians_device,
-                                                                                  device_arrays.periodogram_mads_device,
-                                                                                  static_cast<int>(N_freqs_current),
-                                                                                  N_periodogram_curves);
+                                                                            device_arrays.periodogram_medians_device,
+                                                                            device_arrays.periodogram_mads_device,
+                                                                            static_cast<int>(N_freqs_current),
+                                                                            N_periodogram_curves);
                 cudaDeviceSynchronize();
+
+                auto stop_means = std::chrono::high_resolution_clock::now();
+                auto duration_means = std::chrono::duration_cast<std::chrono::milliseconds>(stop_means - start_means);
+
+                std::cout << "Time taken for CudaComputeMeanandSTD: " << duration_means.count() << " ms" << std::endl;
 
                 cudaStatus = cudaGetLastError();
                 if (cudaStatus != cudaSuccess) {
@@ -623,23 +659,24 @@ void process(const ProcessingExternalParams& params) {
             exit(EXIT_FAILURE);
         }
 
-        // vector<float> amplitudes(objnum_periodograms, 0.0f);
+        vector<float> amplitudes(objnum_periodograms, 0.0f);
+        vector<float> fluxes_avg_var(objnum_periodograms, 0.0f);
+        // Compute the amplitude for each light curve
+        computeAmplitudes(sources_data.fluxes_no_baseline, amplitudes, field_data.N_exp, objnum_periodograms);
+        computeAvgError(sources_data.fluxErrs, fluxes_avg_var, field_data.N_exp, objnum_periodograms);
 
-        // // Compute the amplitude for each light curve
-        // computeAmplitudes(sources_data.fluxes_no_baseline, amplitudes, field_data.N_exp, objnum_periodograms);
-
-        // // Append the flux medians and MADS, as well as periodogram medians and MADS to a CSV file
-        // //Set the chunk number boolean to true if this is the first chunk
+        // Append the flux medians and MADS, as well as periodogram medians and MADS to a CSV file
+        //Set the chunk number boolean to true if this is the first chunk
         // bool is_first_chunk = (k == 0);
         // std::string flux_stats_filename = "flux_statistics.csv";
         // writeFluxStatisticsToCSV(flux_stats_filename,
         //                          sources_data.fluxes_medians,
         //                          sources_data.fluxes_mads,
-        //                          amplitudes,
+        //                          fluxes_avg_var,
         //                          objstart_periodograms,
         //                          is_first_chunk);
 
-        // std::string periodogram_stats_filename = "periodogram_statistics";
+        // std::string periodogram_stats_filename = "periodogram_means_stds";
         // writePeriodogramStatisticsToCSV(periodogram_stats_filename,
         //                                 sources_data.periodogram_medians,
         //                                 sources_data.periodogram_mads,
@@ -648,6 +685,7 @@ void process(const ProcessingExternalParams& params) {
         //                                 params.N_samples,
         //                                 is_first_chunk);
 
+        // int src_idx = 722;
         // string object_filename = "object_" + std::to_string(src_idx) + "_chunk_" + std::to_string(k) + ".csv";
         // // Check if the src idx is in the current chunk
         // if (src_idx >= objstart_periodograms && src_idx < objstart_periodograms + objnum_periodograms) {

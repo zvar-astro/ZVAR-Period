@@ -1010,3 +1010,173 @@ TEST_CASE("Check GPUFit's Output", "[Statistics]") {
 }
 
 */
+
+TEST_CASE("Check Simulated Periodograms", "[FPW]") {
+    try {
+        int N_dat = 500;
+        int N_curves = 1000;
+        int N_freqs = 537130;
+
+        // Load simulated data
+        float* sim_times = new float[N_dat];
+        float* sim_flux = new float[N_dat * N_curves];
+        float* sim_ivar = new float[N_dat * N_curves];
+        float* sim_fgrid = new float[N_freqs];
+
+        // Load sim_times (single column)
+        std::string timesFile = "../tests/data/sim_times.csv";
+        std::vector<std::vector<double>> timesData = readCSV(timesFile);
+        std::vector<double> timesVec = extractColumn(timesData, 0);
+        for (int i = 0; i < N_dat; ++i) {
+            sim_times[i] = static_cast<float>(timesVec[i]);
+        }
+
+        // Load sim_fgrid (single column)
+        std::string fgridFile = "../tests/data/sim_freqs.csv";
+        std::vector<std::vector<double>> fgridData = readCSV(fgridFile);
+        std::vector<double> fgridVec = extractColumn(fgridData, 0);
+        for (int i = 0; i < N_freqs; ++i) {
+            sim_fgrid[i] = static_cast<float>(fgridVec[i]);
+        }
+
+        // Load sim_flux (multiple columns)
+        std::string fluxFile = "../tests/data/sim_flux.csv";
+        std::vector<std::vector<double>> fluxData = readCSV(fluxFile);
+        for (int curve = 0; curve < N_curves; ++curve) {
+            std::vector<double> fluxCol = extractColumn(fluxData, curve);
+            for (int i = 0; i < N_dat; ++i) {
+                sim_flux[curve * N_dat + i] = static_cast<float>(fluxCol[i]);
+            }
+        }
+
+        // Load sim_flux_errs (multiple columns)
+        std::string fluxErrsFile = "../tests/data/sim_flux_errs.csv";
+        std::vector<std::vector<double>> fluxErrsData = readCSV(fluxErrsFile);
+        for (int curve = 0; curve < N_curves; ++curve) {
+            std::vector<double> fluxErrCol = extractColumn(fluxErrsData, curve);
+            for (int i = 0; i < N_dat; ++i) {
+                sim_ivar[curve * N_dat + i] = 1/ (static_cast<float>(fluxErrCol[i]) * static_cast<float>(fluxErrCol[i]));
+            }
+        }
+
+        //Print the first 10 flux values of curve 18
+        for (int i = 0; i < 10; ++i) {
+            std::cout << "sim_flux[18][" << i << "] = " << sim_flux[18 * N_dat + i] << std::endl;
+        }
+
+        std::vector<int> N_bins = {20, 10, 5}; // Default: 20, 10, 5 bins
+
+        float* t_device = nullptr;
+        cudaMalloc(&t_device, N_dat * sizeof(float));
+
+        float* y_device = nullptr;
+        cudaMalloc(&y_device, N_curves * N_dat * sizeof(float));
+
+        float* ivar_device = nullptr;
+        cudaMalloc(&ivar_device, N_curves * N_dat * sizeof(float));
+
+        float* freqs_device = nullptr;
+        cudaMalloc(&freqs_device, N_freqs * sizeof(float));
+
+        unsigned char* indices_device = nullptr;
+        cudaMalloc(&indices_device, N_freqs * N_dat * sizeof(unsigned char));
+
+        int* N_bins_device = nullptr;
+        cudaMalloc(&N_bins_device, 3 * sizeof(int));
+
+        float* periodograms_device = nullptr;
+        cudaMalloc(&periodograms_device, N_curves * N_freqs * 3 * sizeof(float));
+
+        float* periodograms_medians_device = nullptr;
+        cudaMalloc(&periodograms_medians_device, N_curves * 3 * sizeof(float));
+
+        float* periodograms_mads_device = nullptr;
+        cudaMalloc(&periodograms_mads_device, N_curves * 3 * sizeof(float));
+
+        cudaMemcpy(t_device, sim_times, N_dat * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(y_device, sim_flux, N_curves * N_dat * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(ivar_device, sim_ivar, N_curves * N_dat * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(freqs_device, sim_fgrid, N_freqs * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(N_bins_device, N_bins.data(), 3 * sizeof(int), cudaMemcpyHostToDevice);
+
+        dim3 block_size_indices(32, 32);
+        dim3 grid_size_indices((N_freqs + block_size_indices.x - 1) / block_size_indices.x,
+                                (N_dat + block_size_indices.y - 1) / block_size_indices.y);
+
+        cudaMakeIndices<<<grid_size_indices,
+                          block_size_indices>>>(t_device,
+                                                freqs_device,
+                                                indices_device,
+                                                20,
+                                                N_dat,
+                                                N_freqs);
+        
+        cudaDeviceSynchronize();
+
+          dim3 block_size_deltaChi2(32, 8);
+          dim3 grid_size_deltaChi2((N_freqs + block_size_deltaChi2.x - 1) / block_size_deltaChi2.x,
+                                (N_curves + block_size_deltaChi2.y - 1) / block_size_deltaChi2.y);
+          size_t shared_memory_deltaChi2 = 2 * 20 * block_size_deltaChi2.x * block_size_deltaChi2.y * sizeof(float);
+
+        cudaDeltaChi2Multibin<<<grid_size_deltaChi2,
+                                block_size_deltaChi2,
+                                shared_memory_deltaChi2>>>(y_device,
+                                                            ivar_device,
+                                                            indices_device,
+                                                            periodograms_device,
+                                                            N_bins_device,
+                                                            N_dat,
+                                                            N_freqs,
+                                                            N_curves,
+                                                            3);
+        cudaDeviceSynchronize();
+
+        std::vector<float> debug_periodogram(N_freqs);
+        cudaMemcpy(debug_periodogram.data(),
+                periodograms_device + 30 * N_freqs * 3, // 20th curve, sample 0
+                N_freqs * sizeof(float),
+                cudaMemcpyDeviceToHost);
+        for (int i = 100; i < 110; ++i) std::cout << debug_periodogram[i] << std::endl;
+
+        dim3 block_size_postprocess(512);
+        dim3 grid_size_postprocess((N_curves * 3 + block_size_postprocess.x - 1) / block_size_postprocess.x);
+        CudaComputeMedianandMAD<<<grid_size_postprocess,
+                            block_size_postprocess>>>(periodograms_device,
+                                                    periodograms_medians_device,
+                                                    periodograms_mads_device,
+                                                    N_freqs,
+                                                    N_curves * 3);
+        cudaDeviceSynchronize();
+
+        //Copy medians and mads back to the host
+        float* periodogram_medians_host = new float[N_curves * 3];
+        float* periodogram_mads_host = new float[N_curves * 3];
+        cudaMemcpy(periodogram_medians_host, periodograms_medians_device, N_curves * 3 * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(periodogram_mads_host, periodograms_mads_device, N_curves * 3 * sizeof(float), cudaMemcpyDeviceToHost);
+
+        //Print the median of the 20th curve
+
+        std::vector<float> periodogram_medians_vec(periodogram_medians_host, periodogram_medians_host + N_curves * 3);
+        std::vector<float> periodogram_mads_vec(periodogram_mads_host, periodogram_mads_host + N_curves * 3);
+
+        //Save the results
+        std::string sim_periodogram_stats_file = "sim_periodogram_stats";
+        writePeriodogramStatisticsToCSV(sim_periodogram_stats_file,
+                                        periodogram_medians_vec,
+                                        periodogram_mads_vec,
+                                        0,
+                                        N_curves,
+                                        3,
+                                        true);
+
+
+        // Clean up
+        delete[] sim_times;
+        delete[] sim_fgrid;
+        delete[] sim_flux;
+        delete[] sim_ivar;
+
+    } catch (const std::exception& e) {
+        FAIL("Exception occurred: " << e.what());
+    }
+}
