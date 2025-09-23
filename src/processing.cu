@@ -17,17 +17,17 @@ void checkCudaError(cudaError_t err, const char* msg) {
  */
 FieldData loadAndPrepareFieldData(const ProcessingExternalParams& params) {
     FieldData field_data;
-    logMessage(params.log_path, "Loading frame data from: " + params.input_hdf_filename);
+    logMessage(params.log_path, params.input_hdf_filename, "Loading frame data from: " + params.input_hdf_filename);
     try {
-        std::tie(field_data.N_exp, field_data.N_src, field_data.times, field_data.dd_indices) =
+        std::tie(field_data.N_exp, field_data.N_src, field_data.times_double, field_data.times_float, field_data.dd_indices) =
             initializeFrameData(params.input_hdf_filename,
                                 params.id_field_name.c_str(),
                                 params.time_field_name.c_str(),
                                 params.deep_drilling);
         field_data.success = true;
-        logMessage(params.log_path, "Frame data loaded. N_exp: " + std::to_string(field_data.N_exp) + ", N_src: " + std::to_string(field_data.N_src));
+        logMessage(params.log_path, params.input_hdf_filename, "Frame data loaded. N_exp: " + std::to_string(field_data.N_exp) + ", N_src: " + std::to_string(field_data.N_src));
     } catch (const std::exception& e) {
-        logMessage(params.log_path, "Error loading frame data: " + std::string(e.what()));
+        logMessage(params.log_path, params.input_hdf_filename, "Error loading frame data: " + std::string(e.what()));
         field_data.success = false;
     }
     return field_data;
@@ -46,15 +46,15 @@ void createAndFilterFrequencyGrid(
     const ProcessingExternalParams& params,
     FieldData& field_data) { // Takes FieldData by reference
 
-    logMessage(params.log_path, "Creating and filtering frequency grid...");
+    logMessage(params.log_path, params.input_hdf_filename, "Creating and filtering frequency grid...");
     try {
-        std::vector<double> times_double(field_data.times.begin(), field_data.times.end());
-        std::vector<double> fgrid_double = freq_grid(times_double, params.f_min, params.f_max, params.freq_oversampling);
+        // std::vector<double> times_double(field_data.times_float.begin(), field_data.times_float.end());
+        std::vector<double> fgrid_double = freq_grid(field_data.times_double, params.f_min, params.f_max, params.freq_oversampling);
         std::vector<float> fgrid(fgrid_double.begin(), fgrid_double.end());
         unsigned long N_freqs_initial = fgrid.size();
 
         if (N_freqs_initial == 0) {
-            logMessage(params.log_path, "Frequency grid is empty after creation.");
+            logMessage(params.log_path, params.input_hdf_filename, "Frequency grid is empty after creation.");
             field_data.success = false; // Grid creation resulted in empty, likely a failure
             return;
         }
@@ -77,10 +77,10 @@ void createAndFilterFrequencyGrid(
 
         auto duration_erase_freq = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::high_resolution_clock::now() - start_erase_freq);
-        logMessage(params.log_path, "Time to filter terrestrial frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
-        logMessage(params.log_path, "Filtered frequency grid size: " + std::to_string(field_data.fgrid.size()));
+        logMessage(params.log_path, params.input_hdf_filename, "Time to filter terrestrial frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
+        logMessage(params.log_path, params.input_hdf_filename, "Filtered frequency grid size: " + std::to_string(field_data.fgrid.size()));
     } catch (const std::exception& e) {
-        logMessage(params.log_path, "Error creating or filtering frequency grid: " + std::string(e.what()));
+        logMessage(params.log_path, params.input_hdf_filename, "Error creating or filtering frequency grid: " + std::string(e.what()));
         field_data.success = false; // Grid creation resulted in empty, likely a failure
         return;
     }
@@ -115,10 +115,10 @@ void initializeChunkParameters(const ProcessingExternalParams& params, FieldData
         field_data.N_src_batch_gpu_baseline = N_src_per_chunk_baseline;
         field_data.N_batch_gpu_baseline = N_chunk_baseline;
 
-        std::cout << "Number of frequency batches: " << field_data.N_freqs_batch << std::endl;
-        std::cout << "Number of source batches: " << field_data.N_src_batch << std::endl;
+        // std::cout << "Number of frequency batches: " << field_data.N_freqs_batch << std::endl;
+        // std::cout << "Number of source batches: " << field_data.N_src_batch << std::endl;
     } catch (const std::exception& e) {
-        logMessage(params.log_path, "Error initializing chunk parameters: " + std::string(e.what()));
+        logMessage(params.log_path, params.input_hdf_filename, "Error initializing chunk parameters: " + std::string(e.what()));
         field_data.success = false;
         return;
     }
@@ -202,13 +202,14 @@ void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArra
                 sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
                 sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
                 sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
-            } else { // Otherwise, set the flux to the median subtracted value
+            } 
+            // else { // Otherwise, set the flux to the median subtracted value
 
 
-                /*WARNING, TEMPORARY TEST!!!!!!!!!!*/
-                sources_data.fluxes[i * field_data.N_exp + j] = flux;
-                sources_data.fluxErrs[i * field_data.N_exp + j] = std; // Set error to the MAD converted to STD
-            }
+            //     /*WARNING, TEMPORARY TEST!!!!!!!!!!*/
+            //     sources_data.fluxes[i * field_data.N_exp + j] = flux;
+            //     sources_data.fluxErrs[i * field_data.N_exp + j] = std; // Set error to the MAD converted to STD
+            // }
         }
     }
     // Reset y_device since we use it again later.
@@ -231,7 +232,7 @@ void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArra
 void processBaselineRemoval(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data, unsigned long objstart_periodograms, unsigned long objnum_periodograms) {
     try {
         auto result = removeBaseline(
-            field_data.times.data(),
+            field_data.times_float.data(),
             sources_data.fluxes.data(),
             sources_data.fluxErrs.data(),
             field_data.N_exp,
@@ -249,12 +250,12 @@ void processBaselineRemoval(const ProcessingExternalParams& params, FieldData& f
         );
         delete[] temp_chunk; // Free the temporary pointer returned by removeBaseline
 
-        logMessage(params.log_path, "Baseline removal completed for chunk starting at index " + std::to_string(objstart_periodograms) +
+        logMessage(params.log_path, params.input_hdf_filename, "Baseline removal completed for chunk starting at index " + std::to_string(objstart_periodograms) +
             ". Fraction of curves failed: " + std::to_string(fraction_failed));
 
         field_data.success = true; // Set success to true if baseline removal was successful
     } catch (const std::exception& e) {
-        logMessage(params.log_path, "Error in baseline removal: " + std::string(e.what()));
+        logMessage(params.log_path, params.input_hdf_filename, "Error in baseline removal: " + std::string(e.what()));
         field_data.success = false;
         return;
     }
@@ -368,9 +369,9 @@ void removeTempStatus(const ProcessingExternalParams& params, string results_fil
     string rename_command = "mv " + results_filename + " " + final_results_filename;
     int rename_status = system(rename_command.c_str());
     if (rename_status != 0) {
-        logMessage(params.log_path, "Error renaming results file: " + std::to_string(rename_status));
+        logMessage(params.log_path, params.input_hdf_filename, "Error renaming results file: " + std::to_string(rename_status));
     } else {
-        logMessage(params.log_path, "Results written to: " + final_results_filename);
+        logMessage(params.log_path, params.input_hdf_filename, "Results written to: " + final_results_filename);
     }
 }
 
@@ -389,19 +390,25 @@ void process(const ProcessingExternalParams& params) {
     auto start_full = chrono::high_resolution_clock::now(); //Time full run
     auto start_preprocess = chrono::high_resolution_clock::now(); //Time loading and pre-processing
 
-    logMessage(params.log_path, "Running on file: " + params.input_hdf_filename);
+    logMessage(params.log_path, params.input_hdf_filename, "Running on file: " + params.input_hdf_filename);
 
     // --- Initialize Frame Data ---
     FieldData field_data = loadAndPrepareFieldData(params);
 
     if (!field_data.success) {
-        logMessage(params.log_path, "Failed to load field data. Exiting.");
+        logMessage(params.log_path, params.input_hdf_filename, "Failed to load field data. Exiting.");
         exit(EXIT_FAILURE);
     }
 
-    // If there are no exposures, skip the file
-    if (field_data.N_exp == 0) {
-        logMessage(params.log_path, "No exposures found in file, skipping");
+    // If there are less than 50 exposures, skip the file
+    if (field_data.N_exp < 50) {
+        logMessage(params.log_path, params.input_hdf_filename, "Less than 50 exposures found in file, skipping");
+        return;
+    }
+
+    // If there are no sources, skip the file
+    if (field_data.N_src <= 0) {
+        logMessage(params.log_path, params.input_hdf_filename, "No sources found in file, skipping");
         return;
     }
 
@@ -409,7 +416,7 @@ void process(const ProcessingExternalParams& params) {
     createAndFilterFrequencyGrid(params, field_data); //loads frequency grid into field_data
 
     if(!field_data.success) {
-        logMessage(params.log_path, "Failed to create frequency grid. Exiting.");
+        logMessage(params.log_path, params.input_hdf_filename, "Failed to create frequency grid. Exiting.");
         exit(EXIT_FAILURE);
     }
 
@@ -417,7 +424,7 @@ void process(const ProcessingExternalParams& params) {
     initializeChunkParameters(params, field_data); //loads chunk parameters into field_data
 
     if (!field_data.success) {
-        logMessage(params.log_path, "Failed to initialize chunk parameters. Exiting.");
+        logMessage(params.log_path, params.input_hdf_filename, "Failed to initialize chunk parameters. Exiting.");
         exit(EXIT_FAILURE);
     }
     
@@ -425,12 +432,6 @@ void process(const ProcessingExternalParams& params) {
     int status;
     unsigned long objstart_periodograms, objnum_periodograms;
     SourcesData sources_data(params, field_data); // Initialize sources data with field data
-
-    //Print timestamps to debug
-    for (int i = 0; i < field_data.N_exp; i++) {
-        std::cout << "exp " << i << ": " << std::setprecision(std::numeric_limits<float>::max_digits10)
-                << field_data.times[i] << std::endl;
-    }
 
     // --- Initialize Kernel Launch Parameters ---
     KernelLaunchParams kernel_params(params, field_data);
@@ -445,11 +446,11 @@ void process(const ProcessingExternalParams& params) {
 
     auto stop_preprocess = chrono::high_resolution_clock::now();
     auto duration_preprocess = chrono::duration_cast<chrono::milliseconds>(stop_preprocess - start_preprocess);
-    logMessage(params.log_path, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
+    logMessage(params.log_path, params.input_hdf_filename, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
 
     // print how many sources we have in total, how many chunks we will run, how many sources per chunk
     // and how many exposures per source
-    logMessage(params.log_path, 
+    logMessage(params.log_path, params.input_hdf_filename, 
         "Total sources: " + to_string(field_data.N_src) + 
         ", Total source chunks: " + to_string(field_data.N_src_batch) + 
         ", Sources per chunk: " + to_string(field_data.N_src_per_batch) + 
@@ -472,7 +473,7 @@ void process(const ProcessingExternalParams& params) {
 
         auto stop_loadchunk = chrono::high_resolution_clock::now();
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
-        logMessage(params.log_path, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
+        logMessage(params.log_path, params.input_hdf_filename, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
 
         auto start_removeOutliers = chrono::high_resolution_clock::now(); // Time removing outliers
 
@@ -481,7 +482,7 @@ void process(const ProcessingExternalParams& params) {
 
         auto stop_removeOutliers = chrono::high_resolution_clock::now();
         auto duration_removeOutliers = chrono::duration_cast<chrono::milliseconds>(stop_removeOutliers - start_removeOutliers);
-        logMessage(params.log_path, "Time to remove outliers: " + to_string(duration_removeOutliers.count()) + " milliseconds");
+        logMessage(params.log_path, params.input_hdf_filename, "Time to remove outliers: " + to_string(duration_removeOutliers.count()) + " milliseconds");
 
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
@@ -492,10 +493,11 @@ void process(const ProcessingExternalParams& params) {
             // If not removing baseline, just copy the fluxes to the no baseline array
             sources_data.fluxes_no_baseline = sources_data.fluxes;
             sources_data.success = true;
+            logMessage(params.log_path, params.input_hdf_filename, "Skipping baseline removal as per user request.");
         }
 
         if (!sources_data.success) {
-            logMessage(params.log_path, "Failed to remove baseline. Exiting.");
+            logMessage(params.log_path, params.input_hdf_filename, "Failed to remove baseline. Exiting.");
             exit(EXIT_FAILURE);
         }
 
@@ -507,7 +509,7 @@ void process(const ProcessingExternalParams& params) {
 
         auto stop_removebaseline = chrono::high_resolution_clock::now();
         auto duration_removebaseline = chrono::duration_cast<chrono::milliseconds>(stop_removebaseline - start_removebaseline);
-        logMessage(params.log_path, "Time to remove baseline: " + to_string(duration_removebaseline.count()) + " milliseconds");
+        logMessage(params.log_path, params.input_hdf_filename, "Time to remove baseline: " + to_string(duration_removebaseline.count()) + " milliseconds");
 
         // Copy host fluxes and flux errors to device
         copyPhotToDevice(field_data, sources_data, device_arrays, objnum_periodograms);
@@ -565,7 +567,7 @@ void process(const ProcessingExternalParams& params) {
 
             auto stop_FPW = std::chrono::high_resolution_clock::now();
             auto duration_FPW = std::chrono::duration_cast<std::chrono::milliseconds>(stop_FPW - start_FPW);
-            std::cout << "Time taken for cudaDeltaChi2Multibin: " << duration_FPW.count() << " ms" << std::endl;
+            // std::cout << "Time taken for cudaDeltaChi2Multibin: " << duration_FPW.count() << " ms" << std::endl;
 
             // If this is the first chunk, compute the median and MAD
             if (i == 0) {
@@ -589,7 +591,7 @@ void process(const ProcessingExternalParams& params) {
                 auto stop_means = std::chrono::high_resolution_clock::now();
                 auto duration_means = std::chrono::duration_cast<std::chrono::milliseconds>(stop_means - start_means);
 
-                std::cout << "Time taken for CudaComputeMeanandSTD: " << duration_means.count() << " ms" << std::endl;
+                // std::cout << "Time taken for CudaComputeMeanandSTD: " << duration_means.count() << " ms" << std::endl;
 
                 cudaStatus = cudaGetLastError();
                 if (cudaStatus != cudaSuccess) {
@@ -692,7 +694,7 @@ void process(const ProcessingExternalParams& params) {
         //     // Save the times and fluxes for the specific source to a CSV file
         //     unsigned long object_index = src_idx - objstart_periodograms; // Get the index of the object in the current chunk
         //     saveObjectTimesAndFluxToCSV(object_filename,
-        //                                  field_data.times,
+        //                                  field_data.times_float,
         //                                 //  sources_data.fluxes_no_baseline,
         //                                 sources_data.fluxes,
         //                                  sources_data.fluxErrs,
@@ -703,7 +705,7 @@ void process(const ProcessingExternalParams& params) {
         auto stop_processing = chrono::high_resolution_clock::now();
         auto duration_processing = chrono::duration_cast<chrono::milliseconds>(stop_processing - start_processing);
 
-        logMessage(params.log_path, "Time to process periodograms for chunk:" + to_string(k) +
+        logMessage(params.log_path, params.input_hdf_filename, "Time to process periodograms for chunk:" + to_string(k) +
             ": " + to_string(duration_processing.count()) + " milliseconds");
 
         // Write results to file
@@ -736,5 +738,5 @@ void process(const ProcessingExternalParams& params) {
 
     auto stop_full = chrono::high_resolution_clock::now();
     auto duration_full = chrono::duration_cast<chrono::seconds>(stop_full - start_full);
-    logMessage(params.log_path, "matchfile " + params.input_hdf_filename + " finished in " + to_string(duration_full.count()) + " seconds");
+    logMessage(params.log_path, params.input_hdf_filename, "matchfile " + params.input_hdf_filename + " finished in " + to_string(duration_full.count()) + " seconds");
 }

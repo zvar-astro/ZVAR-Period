@@ -22,131 +22,7 @@ void handler() {
     free( stack_syms );
 
     exit(1);
-}  
-
-// int main(int argc, char* argv[]) {
-//     // Check if the correct number of arguments is provided
-//     if (argc != 4) {
-//         cerr << "Usage: " << argv[0] << " <path_to_matchfile> <device> <datatype> (zvar or zforce)" << endl;
-//         return 1;
-//     }
-
-//     std::set_terminate(handler);
-
-//     // Parse command-line arguments
-//     string hdf_filename = argv[1];
-//     int device = atoi(argv[2]);
-
-//     // get the list of available cuda devices
-//     int deviceCount;
-//     cudaGetDeviceCount(&deviceCount);
-//     cout << "Number of available CUDA devices: " << deviceCount << endl;
-
-//     if (device < 0 || device >= 4) {
-//         cerr << "Invalid device number. Please provide a number between 0 and 3." << endl;
-//         return 1;
-//     }
-
-//     // Set the device to use
-//     cudaSetDevice(device);
-
-//     cudaError_t error = cudaGetLastError();
-//     if (error != cudaSuccess) {
-//         std::cerr << "unexpected CUDA error (main): " << cudaGetErrorString(error) << std::endl;
-//         exit(EXIT_FAILURE);
-//     }
-
-//     int maxSharedMem = 0;
-//     cudaDeviceGetAttribute(&maxSharedMem, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
-
-//     // Tell the device to use the maximum amount of shared memory.
-//     cudaFuncSetAttribute(cudaDeltaChi2Multibin, cudaFuncAttributeMaxDynamicSharedMemorySize, maxSharedMem);
-
-//     error = cudaGetLastError();
-//     if (error != cudaSuccess) {
-//         std::cerr << "unexpected CUDA error (main after allocation): " << cudaGetErrorString(error) << std::endl;
-//         exit(EXIT_FAILURE);
-//     }
-
-//     // get the datatype from the command line argument
-//     string datatype = argv[3];
-//     if (datatype != "zvar" && datatype != "zforce") {
-//         cerr << "Invalid datatype. Please provide either 'zvar' or 'zforce'." << endl;
-//         return 1;
-//     }
-//     cout << "Using datatype: " << datatype << endl;
-
-//     // we create the field names based on the datatype
-//     // string id_field_name = datatype + "psid";
-//     // string ra_field_name = datatype + "ra";
-//     // string dec_field_name = datatype + "dec";
-//     // string time_field_name = datatype + "bjd";
-//     // string flux_field_name = datatype + "flux";
-//     // string fluxErr_field_name = datatype + "flux_err";
-//     // if (datatype == "zforce") {
-//     //     time_field_name = "mjd";
-//     // }
-
-//     std::string id_field_name = "psid";
-//     std::string ra_field_name = "ra";
-//     std::string dec_field_name = "dec";
-//     std::string time_field_name = "bjd";
-//     std::string flux_field_name = "flux";
-//     std::string fluxErr_field_name = "flux_err";
-    
-//     // check if the log directory exists, create it (and all the parent directories) if it doesn't
-//     // string logdir = "/data/zvar/logs";
-//     // instead get the log directory from the environment variable, if not provided, use the default
-//     // const char* logdir = std::getenv("ZVAR_LOG_DIR");
-//     // std::cout << "ZVAR_LOG_DIR: " << logdir << std::endl;
-//     // if (logdir == nullptr) {
-//     //     std::cerr << "ZVAR_LOG_DIR environment variable not set. Using default: /data/zvar/logs" << std::endl;
-//     //     // logdir = "/data/swhitebook/zvar_testing/logs";
-//     //     logdir = "/data/zvar/logs";
-//     // }
-//     // string logdir_str(logdir);
-
-//     // string mkdir = "mkdir -p " + logdir_str;
-//     // system(mkdir.c_str());
-
-//     // string logpath = logdir_str + "/device_" + to_string(device) + "_log.txt";
-
-//     // //check if the log file exists, create one if it doesn't
-//     // ifstream infile(logpath);
-//     // if (!infile.good()) {
-//     //     ofstream outfile(logpath);
-//     //     if (!outfile) {
-//     //         cerr << "Failed to create log file: " << logpath << endl;
-//     //         return 1;
-//     //     }
-//     // }
-
-//     std::string logpath = "/data/swhitebook/zvar_testing/logs";
-//     string output_dir = "/data/swhitebook/zvar_testing/stats_testing";
-
-//     // Run the file with the provided arguments
-//     //create an external parameters struct
-//     ProcessingExternalParams params(
-//         device,
-//         1, // num_omp_threads
-//         0.5f, // percent_indices
-//         hdf_filename,
-//         logpath,
-//         output_dir,
-//         id_field_name,
-//         ra_field_name,
-//         dec_field_name,
-//         time_field_name,
-//         flux_field_name,
-//         fluxErr_field_name,
-//         false, // seasonal
-//         false // deep_drilling
-//     );
-
-//     process(params);
-
-//     return 0;
-// }
+}
 
 
 int main(int argc, char* argv[]) {
@@ -154,6 +30,29 @@ int main(int argc, char* argv[]) {
     if (argc < 5) {
         cerr << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <device> <datatype> (zvar or zforce)" << endl;
         return 1;
+    }
+
+    // Print help/usage if requested
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            std::cout << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <device> <datatype> [options]\n";
+            std::cout << "\nRequired arguments:\n";
+            std::cout << "  <path_to_matchfile>   Path to input HDF5 matchfile\n";
+            std::cout << "  <path_to_output>      Path to output directory\n";
+            std::cout << "  <device>              CUDA device number (integer)\n";
+            std::cout << "  <datatype>            'zvar' or 'zforce'\n";
+            std::cout << "\nOptional arguments:\n";
+            std::cout << "  --seasonal <bool>         Seasonal mode (true/false or 1/0)\n";
+            std::cout << "  --deep_drilling <bool>    Include deep drilling (true/false or 1/0)\n";
+            std::cout << "  --remove_baseline <bool>  Remove baseline (true/false or 1/0)\n";
+            std::cout << "  --f_min <float>           Minimum frequency in days^-1 (default: 1.0/10.0)\n";
+            std::cout << "  --f_max <float>           Maximum frequency in days^-1 (default: 1440.0/5.0)\n";
+            std::cout << "  -s, -d, -b, -min, -max    Short forms for above options\n";
+            std::cout << "  -h, --help                Show this help message\n";
+            std::cout << std::endl;
+            return 0;
+        }
     }
 
     std::set_terminate(handler);
@@ -207,6 +106,12 @@ int main(int argc, char* argv[]) {
     bool deep_drilling = false;
     bool remove_baseline = true;
 
+    // Default values for f_min and f_max
+    double f_min = 1.0 / 10.0; // 10 day max period
+    double f_max = 1440.0 / 5.0; // 5 min min period
+    // double f_max = 1.0 / 10.0, // 10 day min period
+    // double f_min = 1.0 / (3.0 * 365), // 3 year max period
+
     //Helper function for parsing optional arguments
     auto parse_bool_arg = [](const std::string& val, const std::string& arg_name) -> bool {
         if (val == "true" || val == "1") return true;
@@ -255,6 +160,39 @@ int main(int argc, char* argv[]) {
                 }
             }
             remove_baseline = parse_bool_arg(val, arg);
+        } else if (arg == "--f_min" || arg == "-min") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            try {
+                f_min = std::stod(val);
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Invalid value for f_min: " << val << std::endl;
+                exit(1);
+            }
+        } else if (arg == "--f_max" || arg == "-max") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            try {
+                f_max = std::stod(val);
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Invalid value for f_max: " << val << std::endl;
+                exit(1);
+            }
+        } else {
+            std::cerr << "Unknown argument: " << arg << std::endl;
+            exit(1);
         }
     }
 
@@ -284,7 +222,9 @@ int main(int argc, char* argv[]) {
         fluxErr_field_name,
         seasonal,
         deep_drilling,
-        remove_baseline
+        remove_baseline,
+        f_min,
+        f_max
     );
 
     process(params);

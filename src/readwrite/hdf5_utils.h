@@ -112,6 +112,6 @@ std::vector<unsigned char> flagDeepDrilling(
 );
 
 // Function to load a sanitized time vector from an HDF5 file, and return the number of exposures and sources
-std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned char>> initializeFrameData(const std::string &filename, const char *id_field_name, const char *time_field_name, bool invert);
+std::tuple<unsigned int, unsigned int, std::vector<double>, std::vector<float>, std::vector<unsigned char>> initializeFrameData(const std::string &filename, const char *id_field_name, const char *time_field_name, bool invert);
 
 #endif

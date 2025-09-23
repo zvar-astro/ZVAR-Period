@@ -1299,7 +1299,7 @@ std::vector<unsigned char> flagDeepDrilling(const std::vector<double> time, int 
 //   return std::make_tuple(NEXP, NSRC, time, dd_index);
 // }
 
-std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned char>> initializeFrameData(
+std::tuple<unsigned int, unsigned int, std::vector<double>, std::vector<float>, std::vector<unsigned char>> initializeFrameData(
   const std::string &filename,
   const char *id_field_name,
   const char *time_field_name,
@@ -1320,14 +1320,11 @@ std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned 
     - deep_drilling_flags: Vector indicating which timestamps to keep
     */
 
+    // std::cout << filename << std::endl;
+
     // Variables to store number of exposures & sources
     int NEXP = get_number_of_rows_wrapper(filename, "/data/exposures");
     int NSRC = get_number_of_rows_wrapper(filename, "/data/sources");
-
-    if (NEXP <= 0 || NSRC <= 0)
-    {
-        throw std::runtime_error("Invalid number of exposures or sources.");
-    }
 
     // Use NEXP and NSRC to initialize time and source vectors
     std::vector<double> h_bjd(NEXP, 0.0);         // BJD must be read in with double precision
@@ -1343,6 +1340,8 @@ std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned 
     std::vector<unsigned char> dd_index = flagDeepDrilling(h_bjd, NEXP); // 1=keep, 0=deep drilling
     int non_dd = std::accumulate(dd_index.begin(), dd_index.end(), 0);
 
+    std::cout << "Total exposures: " << NEXP << ", Non-deep drilling exposures: " << non_dd << std::endl;
+
     if (!deep_drilling) {
     // Remove deep drilling BJDs if deep_drilling is false
         for (int i = NEXP-1; i >= 0; i--) {
@@ -1357,17 +1356,20 @@ std::tuple<unsigned int, unsigned int, std::vector<float>, std::vector<unsigned 
         std::fill(dd_index.begin(), dd_index.end(), 1);
     }
 
-    // If deep_drilling is true, keep all BJDs (do not erase)
-    if ((!deep_drilling && non_dd == 0) || (deep_drilling && NEXP == 0)) {
-        throw std::runtime_error("No valid BJDs after filtering.");
-    }
+    // // If deep_drilling is true, keep all BJDs (do not erase)
+    // if ((!deep_drilling && non_dd == 0) || (deep_drilling && NEXP == 0)) {
+    //     // throw std::runtime_error("No valid BJDs after filtering.");
+    //     std::cout << "Warning: No valid BJDs after filtering." << std::endl;
+    // }
 
     // Subtract minimum BJD and convert to float
-    std::vector<float> time(h_bjd.size(), 0.0f); // Time values after subtracting mean BJD
+    std::vector<float> time_float(h_bjd.size(), 0.0f); // Time values after subtracting mean BJD
+    std::vector<double> time_double(h_bjd.size(), 0.0d); // Time values in double precision
     double bjdref = *std::min_element(h_bjd.begin(), h_bjd.end());
     for (size_t i = 0; i < h_bjd.size(); i++) {
-        time[i] = static_cast<float>(h_bjd[i] - bjdref);
+        time_double[i] = h_bjd[i] - bjdref;
+        time_float[i] = static_cast<float>(time_double[i]);
     }
 
-    return std::make_tuple(h_bjd.size(), NSRC, time, dd_index);
+    return std::make_tuple(h_bjd.size(), NSRC, time_double, time_float, dd_index);
 }

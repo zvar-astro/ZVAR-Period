@@ -1180,3 +1180,36 @@ TEST_CASE("Check Simulated Periodograms", "[FPW]") {
         FAIL("Exception occurred: " << e.what());
     }
 }
+
+TEST_CASE("Check Deep Drilling Flagging", "[Processing]") {
+    try {
+        std::string test_file_name = "../tests/data/dd_test_flagged.csv";
+        std::ifstream infile(test_file_name);
+        REQUIRE(infile.is_open());
+
+        std::vector<double> times;
+        std::vector<unsigned char> flags;
+
+        std::string line;
+        while (std::getline(infile, line)) {
+            std::istringstream iss(line);
+            std::string t_str, flag_str;
+            if (!std::getline(iss, t_str, ',') || !std::getline(iss, flag_str)) continue;
+            double t = std::stod(t_str);
+            int flag_int = std::stoi(flag_str);
+            times.push_back(t);
+            flags.push_back(static_cast<unsigned char>(flag_int));
+        }
+        infile.close();
+
+        REQUIRE(times.size() == flags.size());
+
+        //Print out all the times and flags
+        for (size_t i = 0; i < times.size(); ++i) {
+            std::cout << "times[" << i << "] = " << times[i] << ", flags[" << i << "] = " << (int)flags[i] << std::endl;
+        }
+    }
+    catch (const std::exception& e) {
+        FAIL("Exception occurred: " << e.what());
+    }
+}
