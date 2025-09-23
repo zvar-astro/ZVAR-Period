@@ -6,12 +6,18 @@
  * @param logfile The file to log to
  * @param message The message to log
  */
-void logMessage(const std::string& logfile, const std::string& message) {
+void logMessage(const std::string& logfile, const std::string& inputfile, const std::string& message) {
     std::ofstream log_file(logfile, std::ios_base::out | std::ios_base::app);
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-    log_file << std::ctime(&now_time) << message << std::endl;
-    std::cout << message << std::endl;
+    std::string time_str = std::ctime(&now_time);
+    if (!time_str.empty() && time_str.back() == '\n') {
+        time_str.pop_back();
+    }
+
+    std::string basename = std::filesystem::path(inputfile).filename().string();
+    log_file << "[" << time_str << "] [" << basename << "] " << message << std::endl;
+    std::cout << "[" << time_str << "] [" << basename << "] " << message << std::endl;
 }
 
 void computeAmplitudes(const std::vector<float>& fluxes_no_baseline,

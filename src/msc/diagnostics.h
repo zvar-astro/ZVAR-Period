@@ -8,8 +8,9 @@
 #include <chrono>
 #include <ctime>
 #include <cmath>
+#include <filesystem>
 
-void logMessage(const std::string& logfile, const std::string& message);
+void logMessage(const std::string& logfile, const std::string& inputfile, const std::string& message);
 
 void computeAmplitudes(const std::vector<float>& fluxes_no_baseline,
                        std::vector<float>& amplitudes,

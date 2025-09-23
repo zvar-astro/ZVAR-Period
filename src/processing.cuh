@@ -117,9 +117,11 @@ struct ProcessingExternalParams {
 };
 
 struct FieldData {
-    std::vector<float> times;
+    std::vector<float> times_float;
+    std::vector<double> times_double;
     std::vector<unsigned char> dd_indices;
     std::vector<float> fgrid;
+    std::vector<double> fgrid_double;
     unsigned int N_exp;
     unsigned int N_src;
     unsigned long N_freqs;
@@ -243,7 +245,7 @@ struct DeviceArrays {
         cudaMalloc(&peak_indices_device, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
         cudaMalloc(&peak_values_device, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
 
-        cudaMemcpyAsync(t_device, field_data.times.data(), field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice); // copy the times over, this is only done once.
+        cudaMemcpyAsync(t_device, field_data.times_float.data(), field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice); // copy the times over, this is only done once.
         cudaMemcpyAsync(N_bins_device, params.N_bins.data(), params.N_samples * sizeof(int), cudaMemcpyHostToDevice); // copy the N_bins over, this is only done once.
 
         cudaMemsetAsync(y_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
