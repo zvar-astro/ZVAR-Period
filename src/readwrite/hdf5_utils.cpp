@@ -941,6 +941,10 @@ std::string createOutputFilepath(std::string output_dir, std::string input_hdf_f
     if (pos != std::string::npos) {
         hdf_filename_copy = hdf_filename_copy.substr(pos + 1);
     }
+    pos = hdf_filename_copy.find_last_of(".");
+    if (pos != std::string::npos) {
+        hdf_filename_copy = hdf_filename_copy.substr(0, pos);
+    }
     std::string results_filename = output_dir + "/" + hdf_filename_copy + "_results.h5.temp";
     return results_filename;
 }

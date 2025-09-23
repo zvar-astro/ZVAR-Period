@@ -14,6 +14,9 @@ n_gpus = int(os.environ.get('N_GPUS', 1))
 n_processes = min(n_processes, 2 * n_gpus)
 binaries_location = os.environ.get('BINARIES_LOCATION', './build')
 
+data_dir = os.environ.get('DATA_DIR', '/data/lightcurves')
+output_dir = os.environ.get('OUTPUT_DIR', '/data/output')
+
 # remove trailing slash if it exists
 if binaries_location.endswith('/'):
     binaries_location = binaries_location[:-1]
@@ -46,6 +49,8 @@ def signal_handler(sig, frame, semaphore_names):
     sys.exit(0)
 
 def run_cudaFPW(file_path, device, datatype, n_process, stop_event):
+    file_output_dir = file_path.replace(data_dir, output_dir).rsplit('/', 1)[0]
+    print(f"Processing {file_path} on device {device}, output will be saved to {file_output_dir}")
     command = [
         'taskset',
         '-c',
@@ -53,6 +58,7 @@ def run_cudaFPW(file_path, device, datatype, n_process, stop_event):
         str(n_process * 4) + "-" + str((n_process + 1) * 4 - 1),
         f"{binaries_location}/cudaFPW",
         str(file_path),
+        str(file_output_dir),
         str(device),
         str(datatype),
     ]
@@ -88,9 +94,6 @@ def worker(task_queue, device, n_process, algorithm, datatype, stop_event):
         task_queue.task_done()
 
 if __name__ == "__main__":
-    data_dir = os.environ.get('DATA_DIR', '/data/lightcurves')
-    output_dir = os.environ.get('OUTPUT_DIR', '/data/output')
-    
     algorithm = 'fpw'
     datatype = 'zvar'
 
@@ -101,15 +104,16 @@ if __name__ == "__main__":
     task_queue = queue.Queue()
     
     # bands = [band] if band else ['g', 'r']
-    files = glob.glob(f"{data_dir}/*.h5")
+    # files = glob.glob(f"{data_dir}/**/*.h5")
+    files = glob.glob(f"{data_dir}/**/*.h5", recursive=True)
     # remove those that end in _results.h5
     files = [file for file in files if not file.endswith('_results.h5')]
-    files_completed = glob.glob(f"{output_dir}/*_results.h5")
+    files_completed = glob.glob(f"{output_dir}/**/*_results.h5", recursive=True)
     # remove those that are already in the output directory
     files_completed = [file.split('/')[-1] for file in files_completed]
     files = [file for file in files if file.split('/')[-1] not in files_completed]
     files = sorted(files)
-    print(f"Found {len(files)} files to process.")
+    print(f"Found {len(files)} files to process (out of {len(files) + len(files_completed)} total files).")
     # for all the files,
     for file in files:
         task_queue.put(file)

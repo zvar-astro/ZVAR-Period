@@ -426,11 +426,11 @@ void process(const ProcessingExternalParams& params) {
     unsigned long objstart_periodograms, objnum_periodograms;
     SourcesData sources_data(params, field_data); // Initialize sources data with field data
 
-    //Print timestamps to debug
-    for (int i = 0; i < field_data.N_exp; i++) {
-        std::cout << "exp " << i << ": " << std::setprecision(std::numeric_limits<float>::max_digits10)
-                << field_data.times[i] << std::endl;
-    }
+    // //Print timestamps to debug
+    // for (int i = 0; i < field_data.N_exp; i++) {
+    //     std::cout << "exp " << i << ": " << std::setprecision(std::numeric_limits<float>::max_digits10)
+    //             << field_data.times[i] << std::endl;
+    // }
 
     // --- Initialize Kernel Launch Parameters ---
     KernelLaunchParams kernel_params(params, field_data);
@@ -703,7 +703,8 @@ void process(const ProcessingExternalParams& params) {
         auto stop_processing = chrono::high_resolution_clock::now();
         auto duration_processing = chrono::duration_cast<chrono::milliseconds>(stop_processing - start_processing);
 
-        logMessage(params.log_path, "Time to process periodograms for chunk:" + to_string(k) +
+        logMessage(params.log_path, "Time to process periodograms for chunk " + to_string(k) +
+            "/" + to_string(field_data.N_src_batch) +
             ": " + to_string(duration_processing.count()) + " milliseconds");
 
         // Write results to file
@@ -733,6 +734,8 @@ void process(const ProcessingExternalParams& params) {
 
     //Remove the .temp extension at the end
     removeTempStatus(params, results_filename);
+
+    logMessage(params.log_path, "Finished processing file: " + params.input_hdf_filename + ", saved results to: " + results_filename);
 
     auto stop_full = chrono::high_resolution_clock::now();
     auto duration_full = chrono::duration_cast<chrono::seconds>(stop_full - start_full);

@@ -23,9 +23,21 @@ void computeAmplitudes(const std::vector<float>& fluxes_no_baseline,
     Computes an amplitude for every source by finding the maximum and minimum
     */
     for (unsigned long i = 0; i < N_src; ++i) {
-        auto minmax = std::minmax_element(fluxes_no_baseline.begin() + i * N_exp,
-                                           fluxes_no_baseline.begin() + (i + 1) * N_exp);
-        amplitudes[i] = *minmax.second - *minmax.first;
+        // auto minmax = std::minmax_element(fluxes_no_baseline.begin() + i * N_exp,
+        //                                    fluxes_no_baseline.begin() + (i + 1) * N_exp);
+        // do the same but not with minmax_element, which is slow
+        float min_val = std::numeric_limits<float>::max();
+        float max_val = std::numeric_limits<float>::lowest();
+        for (unsigned long j = 0; j < N_exp; ++j) {
+            float val = fluxes_no_baseline[i * N_exp + j];
+            if (val < min_val) {
+                min_val = val;
+            }
+            if (val > max_val) {
+                max_val = val;
+            }
+        }
+        amplitudes[i] = max_val - min_val;
     }
 }
 
