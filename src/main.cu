@@ -196,14 +196,14 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::string id_field_name = "psid";
+    std::string id_field_name = "gaia_id";
     std::string ra_field_name = "ra";
-    std::string dec_field_name = "dec";
+    std::string dec_field_name = "decl";
     std::string time_field_name = "bjd";
     std::string flux_field_name = "flux";
-    std::string fluxErr_field_name = "fluxerr";
+    std::string fluxErr_field_name = "flux_err";
 
-    std::string logpath = "/data/swhitebook/zvar_testing/logs";
+    std::string logpath = "/home/theodlz/work/zvar/ZVAR-Period/logs";
 
     // Run the file with the provided arguments
     //create an external parameters struct

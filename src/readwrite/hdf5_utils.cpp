@@ -941,6 +941,10 @@ std::string createOutputFilepath(std::string output_dir, std::string input_hdf_f
     if (pos != std::string::npos) {
         hdf_filename_copy = hdf_filename_copy.substr(pos + 1);
     }
+    pos = hdf_filename_copy.find_last_of(".");
+    if (pos != std::string::npos) {
+        hdf_filename_copy = hdf_filename_copy.substr(0, pos);
+    }
     std::string results_filename = output_dir + "/" + hdf_filename_copy + "_results.h5.temp";
     return results_filename;
 }
@@ -1104,6 +1108,8 @@ void appendResults(std::string filename, unsigned long *psids, float *ra, float 
   // Dataset names and corresponding data pointers
   const char *dataset_names[] = {"psids", "ra", "dec", "valid", "bestFreqs", "significance", "means", "stds"};
   void *data_pointers[] = {psids, ra, dec, valid, bestFreqs, significance, means, stdevs};
+  hid_t data_types[] = {H5T_NATIVE_ULONG, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, 
+                        H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT};
   hsize_t dims[] = {
       static_cast<hsize_t>(N_curves),
       static_cast<hsize_t>(N_curves),
@@ -1145,7 +1151,7 @@ void appendResults(std::string filename, unsigned long *psids, float *ra, float 
       continue;
     }
 
-    if (H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, mem_dataspace, file_dataspace, H5P_DEFAULT, data_pointers[i]) < 0)
+    if (H5Dwrite(dataset_id, data_types[i], mem_dataspace, file_dataspace, H5P_DEFAULT, data_pointers[i]) < 0)
     {
       std::cerr << "Error: Unable to write data to dataset: " << dataset_names[i] << std::endl;
     }
