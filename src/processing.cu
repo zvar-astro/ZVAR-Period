@@ -737,7 +737,7 @@ void process(const ProcessingExternalParams& params) {
     //Remove the .temp extension at the end
     removeTempStatus(params, results_filename);
 
-    logMessage(params.log_path, "Finished processing file: " + params.input_hdf_filename + ", saved results to: " + results_filename);
+    logMessage(params.log_path, params.input_hdf_filename, "Finished processing file: " + params.input_hdf_filename + ", saved results to: " + results_filename);
 
     auto stop_full = chrono::high_resolution_clock::now();
     auto duration_full = chrono::duration_cast<chrono::seconds>(stop_full - start_full);

@@ -110,7 +110,7 @@ if __name__ == "__main__":
     files = [file for file in files if not file.endswith('_results.h5')]
     files_completed = glob.glob(f"{output_dir}/**/*_results.h5", recursive=True)
     # remove those that are already in the output directory
-    files_completed = [file.split('/')[-1] for file in files_completed]
+    files_completed = [file.split('/')[-1].replace('_results.h5', '.h5') for file in files_completed]
     files = [file for file in files if file.split('/')[-1] not in files_completed]
     files = sorted(files)
     print(f"Found {len(files)} files to process (out of {len(files) + len(files_completed)} total files).")
