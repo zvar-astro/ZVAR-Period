@@ -761,7 +761,6 @@ __global__ void cudaFindPeaksChunk(
         if (distance_since_last_peak == distance && candidate_peak_idx != -1) {
             // The candidate peak is confirmed. Insert it into the top N peaks.
             insert_peak(top_peak_indices, top_peak_values, candidate_peak_idx, candidate_peak_value);
-
             // Reset state for finding the next peak
             distance_since_last_peak = 0;
             dynamic_threshold = threshold;

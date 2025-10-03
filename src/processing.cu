@@ -213,7 +213,10 @@ void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArra
         }
     }
     // Reset y_device since we use it again later.
-    cudaMemset(device_arrays.y_device, 0, objnum_periodograms * field_data.N_exp * sizeof(float));
+    size_t N_exp_total = objnum_periodograms * field_data.N_exp;
+    size_t threads = 256;
+    size_t blocks = (N_exp_total + threads - 1) / threads;
+    setFloatArrayKernel<<<blocks, threads>>>(device_arrays.y_device, 0.0f, N_exp_total);
     cudaDeviceSynchronize(); // Ensure all operations are complete before proceeding
 }
 
@@ -333,23 +336,57 @@ void copyPeaksToHost(const ProcessingExternalParams& params, FieldData& field_da
  */
 void resetPersitentArrays(DeviceArrays& device_arrays, PeakPersistentArrays& peak_arrays, const ProcessingExternalParams& params, FieldData& field_data) {
 
-    // Reset the device arrays to their initial state for the next source chunk
-    cudaMemset(device_arrays.y_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
-    cudaMemset(device_arrays.ivar_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
-    cudaMemset(device_arrays.y_medians_device, 0, field_data.N_src_per_batch * sizeof(float));
-    cudaMemset(device_arrays.y_mads_device, 0, field_data.N_src_per_batch * sizeof(float));
-    cudaMemset(device_arrays.periodograms_device, 0, field_data.N_src_per_batch * params.N_samples * field_data.N_freqs_per_batch * sizeof(float));
-    cudaMemset(device_arrays.periodogram_medians_device, 0, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-    cudaMemset(device_arrays.periodogram_mads_device, 0, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-    cudaMemset(device_arrays.peak_indices_device, -1, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
-    cudaMemset(device_arrays.peak_values_device, -INFINITY, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
+    size_t threads = 256;
+
+    // y_device
+    size_t N_y = field_data.N_src_per_batch * field_data.N_exp;
+    size_t blocks_y = (N_y + threads - 1) / threads;
+    setFloatArrayKernel<<<blocks_y, threads>>>(device_arrays.y_device, 0.0f, N_y);
+
+    // ivar_device
+    setFloatArrayKernel<<<blocks_y, threads>>>(device_arrays.ivar_device, 0.0f, N_y);
+
+    // y_medians_device
+    size_t N_medians = field_data.N_src_per_batch;
+    size_t blocks_medians = (N_medians + threads - 1) / threads;
+    setFloatArrayKernel<<<blocks_medians, threads>>>(device_arrays.y_medians_device, 0.0f, N_medians);
+
+    // y_mads_device
+    setFloatArrayKernel<<<blocks_medians, threads>>>(device_arrays.y_mads_device, 0.0f, N_medians);
+
+    // periodograms_device
+    size_t N_periodograms = field_data.N_src_per_batch * params.N_samples * field_data.N_freqs_per_batch;
+    size_t blocks_periodograms = (N_periodograms + threads - 1) / threads;
+    setFloatArrayKernel<<<blocks_periodograms, threads>>>(device_arrays.periodograms_device, 0.0f, N_periodograms);
+
+    // periodogram_medians_device
+    size_t N_periodogram_medians = field_data.N_src_per_batch * params.N_samples;
+    size_t blocks_periodogram_medians = (N_periodogram_medians + threads - 1) / threads;
+    setFloatArrayKernel<<<blocks_periodogram_medians, threads>>>(device_arrays.periodogram_medians_device, 0.0f, N_periodogram_medians);
+
+    // periodogram_mads_device
+    setFloatArrayKernel<<<blocks_periodogram_medians, threads>>>(device_arrays.periodogram_mads_device, 0.0f, N_periodogram_medians);
+
+    // peak_indices_device
+    size_t N_peak_indices = field_data.N_src_per_batch * params.N_samples * N_peaks;
+    size_t blocks_peak_indices = (N_peak_indices + threads - 1) / threads;
+    setIntArrayKernel<<<blocks_peak_indices, threads>>>(device_arrays.peak_indices_device, -1, N_peak_indices);
+
+    // peak_values_device
+    setFloatArrayKernel<<<blocks_peak_indices, threads>>>(device_arrays.peak_values_device, -INFINITY, N_peak_indices);
+
+    cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
+
 
     // Reset the persistent arrays for peak finding
-    cudaMemset(peak_arrays.state_candidate_idx, -1, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-    cudaMemset(peak_arrays.state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-    cudaMemset(peak_arrays.state_dist_last_peak, params.peak_distance, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-    cudaMemset(peak_arrays.state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-    cudaMemset(peak_arrays.last_chunk_data_device, 0.0f, field_data.N_src_per_batch * params.N_samples * 2 * sizeof(float)); // Initialize last chunk data to -1.0f
+    size_t N_persist = field_data.N_src_per_batch * params.N_samples;
+    size_t blocks_persist = (N_persist + threads - 1) / threads;
+
+    setIntArrayKernel<<<blocks_persist, threads>>>(peak_arrays.state_candidate_idx, -1, N_persist);
+    setFloatArrayKernel<<<blocks_persist, threads>>>(peak_arrays.state_candidate_vals, -INFINITY, N_persist);
+    setIntArrayKernel<<<blocks_persist, threads>>>(peak_arrays.state_dist_last_peak, params.peak_distance, N_persist);
+    setFloatArrayKernel<<<blocks_persist, threads>>>(peak_arrays.state_current_threshold, params.peak_threshold, N_persist);
+    setFloatArrayKernel<<<blocks_persist, threads>>>(peak_arrays.last_chunk_data_device, 0.0f, N_persist * 2); // Initialize last chunk data to -1.0f
 }
 
 
@@ -615,6 +652,9 @@ void process(const ProcessingExternalParams& params) {
                 exit(EXIT_FAILURE);
             }
 
+            //Check the peak_arrays.state_current_threshold and print the first value
+            float first_threshold;
+            cudaMemcpy(&first_threshold, peak_arrays.state_current_threshold, sizeof(float), cudaMemcpyDeviceToHost);
             // Find peaks in this chunk
             cudaFindPeaksChunk<<<kernel_params.grid_size_postprocess,
                         kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,

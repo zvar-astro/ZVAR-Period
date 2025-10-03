@@ -248,11 +248,17 @@ struct DeviceArrays {
         cudaMemcpyAsync(t_device, field_data.times_float.data(), field_data.N_exp * sizeof(float), cudaMemcpyHostToDevice); // copy the times over, this is only done once.
         cudaMemcpyAsync(N_bins_device, params.N_bins.data(), params.N_samples * sizeof(int), cudaMemcpyHostToDevice); // copy the N_bins over, this is only done once.
 
-        cudaMemsetAsync(y_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
-        cudaMemsetAsync(ivar_device, 0, field_data.N_src_per_batch * field_data.N_exp * sizeof(float));
+        size_t N_exp_total = field_data.N_src_per_batch * field_data.N_exp;
+        size_t N_peaks_total = field_data.N_src_per_batch * params.N_samples * N_peaks;
+        size_t threads = 256;
+        size_t blocks_exp = (N_exp_total + threads - 1) / threads;
+        size_t blocks_peaks = (N_peaks_total + threads - 1) / threads;
 
-        cudaMemsetAsync(peak_indices_device, -1, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
-        cudaMemsetAsync(peak_values_device, -INFINITY, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
+        setFloatArrayKernel<<<blocks_exp, threads>>>(y_device, 0.0f, N_exp_total);
+        setFloatArrayKernel<<<blocks_exp, threads>>>(ivar_device, 0.0f, N_exp_total);
+
+        setIntArrayKernel<<<blocks_peaks, threads>>>(peak_indices_device, -1, N_peaks_total);
+        setFloatArrayKernel<<<blocks_peaks, threads>>>(peak_values_device, -INFINITY, N_peaks_total);
 
         cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
 
@@ -288,7 +294,6 @@ struct DeviceArrays {
     }
 };
 
-
 struct PeakPersistentArrays {
     int* state_candidate_idx;
     float* state_candidate_vals;
@@ -303,17 +308,21 @@ struct PeakPersistentArrays {
           state_current_threshold(nullptr),
           last_chunk_data_device(nullptr) {
         // Allocate device memory
-        cudaMalloc(&state_candidate_idx, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-        cudaMalloc(&state_candidate_vals, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMalloc(&state_dist_last_peak, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-        cudaMalloc(&state_current_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMalloc(&last_chunk_data_device, field_data.N_src_per_batch * params.N_samples * 2 * sizeof(float));
+        size_t N = field_data.N_src_per_batch * params.N_samples;
+        size_t threads = 256;
+        size_t blocks = (N + threads - 1) / threads;
 
-        cudaMemsetAsync(state_candidate_idx, -1, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-        cudaMemsetAsync(state_candidate_vals, -INFINITY, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMemsetAsync(state_dist_last_peak, params.peak_distance, field_data.N_src_per_batch * params.N_samples * sizeof(int));
-        cudaMemsetAsync(state_current_threshold, params.peak_threshold, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMemsetAsync(last_chunk_data_device, 0, field_data.N_src_per_batch * params.N_samples * 2 * sizeof(float));
+        cudaMalloc(&state_candidate_idx, N * sizeof(int));
+        cudaMalloc(&state_candidate_vals, N * sizeof(float));
+        cudaMalloc(&state_dist_last_peak, N * sizeof(int));
+        cudaMalloc(&state_current_threshold, N * sizeof(float));
+        cudaMalloc(&last_chunk_data_device, N * 2 * sizeof(float));
+
+        setIntArrayKernel<<<blocks, threads>>>(state_candidate_idx, -1, N);
+        setFloatArrayKernel<<<blocks, threads>>>(state_candidate_vals, -INFINITY, N);
+        setIntArrayKernel<<<blocks, threads>>>(state_dist_last_peak, params.peak_distance, N);
+        setFloatArrayKernel<<<blocks, threads>>>(state_current_threshold, params.peak_threshold, N);
+        setFloatArrayKernel<<<blocks, threads>>>(last_chunk_data_device, 0.0f, N * 2);
 
         cudaDeviceSynchronize(); // Ensure all memory operations are complete before proceeding
 
@@ -339,7 +348,6 @@ struct PeakPersistentArrays {
         }
     }
 };
-
 
 FieldData loadAndPrepareFieldData(const ProcessingExternalParams& params);
 

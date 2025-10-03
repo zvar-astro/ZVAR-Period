@@ -15,6 +15,10 @@ struct BatchParams {
     size_t N_src_per_chunk_baseline;
 };
 
+__global__ void setFloatArrayKernel(float* arr, float value, size_t n);
+
+__global__ void setIntArrayKernel(int* arr, int value, size_t n);
+
 size_t getHostMemory();
 
 size_t getDeviceMemory(int deviceNum);

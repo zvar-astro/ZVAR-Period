@@ -1,5 +1,14 @@
 #include "memory_managers.cuh"
 
+__global__ void setFloatArrayKernel(float* arr, float value, size_t n) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) arr[idx] = value;
+}
+__global__ void setIntArrayKernel(int* arr, int value, size_t n) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) arr[idx] = value;
+}
+
 /* Returns the total memory of the host system in bytes*/
 size_t getHostMemory() {
     struct sysinfo memInfo;
