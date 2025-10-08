@@ -155,7 +155,6 @@ export N_GPUS=1 # Number of GPUs to use
 export TOTAL_CPU_CAP=0.8 # Memory usage cap for all processes
 export CHUNK_CPU_CAP=0.8 # Memory usage cap for a single chunk of lightcurves
 export GPU_CAP=0.9 # GPU memory usage cap
-export N_FREQ_BATCH=50000 # Number of frequencies to process in a single batch
 
 # Last but not least, we specify where our input data is located, and where the output data should go
 # and where the binaries we've built are found
