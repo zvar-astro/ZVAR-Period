@@ -27,8 +27,8 @@ void handler() {
 
 int main(int argc, char* argv[]) {
     // Check if the correct number of arguments is provided
-    if (argc < 5) {
-        cerr << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <device> <datatype> (zvar or zforce)" << endl;
+    if (argc < 6) {
+        cerr << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <path_to_logfile> <device> <datatype> (zvar or zforce)" << endl;
         return 1;
     }
 
@@ -40,6 +40,7 @@ int main(int argc, char* argv[]) {
             std::cout << "\nRequired arguments:\n";
             std::cout << "  <path_to_matchfile>   Path to input HDF5 matchfile\n";
             std::cout << "  <path_to_output>      Path to output directory\n";
+            std::cout << "  <path_to_logfile>     Path to log file\n";
             std::cout << "  <device>              CUDA device number (integer)\n";
             std::cout << "  <datatype>            'zvar' or 'zforce'\n";
             std::cout << "\nOptional arguments:\n";
@@ -60,7 +61,8 @@ int main(int argc, char* argv[]) {
     // Parse command-line arguments
     string hdf_filename = argv[1];
     string output_dir = argv[2];
-    int device = atoi(argv[3]);
+    string log_filename = argv[3];
+    int device = atoi(argv[4]);
 
     // get the list of available cuda devices
     int deviceCount;
@@ -94,7 +96,7 @@ int main(int argc, char* argv[]) {
     }
 
     // get the datatype from the command line argument
-    string datatype = argv[4];
+    string datatype = argv[5];
     if (datatype != "zvar" && datatype != "zforce") {
         cerr << "Invalid datatype. Please provide either 'zvar' or 'zforce'." << endl;
         return 1;
@@ -121,7 +123,7 @@ int main(int argc, char* argv[]) {
     };
 
     // Parse the optional arguments
-    for (int i = 5; i < argc; ++i) {
+    for (int i = 6; i < argc; ++i) {
         std::string arg = argv[i];
         std::string val;
         // Check for --option=value format
@@ -203,8 +205,6 @@ int main(int argc, char* argv[]) {
     std::string flux_field_name = "flux";
     std::string fluxErr_field_name = "flux_err";
 
-    std::string logpath = "/home/theodlz/work/zvar/ZVAR-Period/logs";
-
     // Run the file with the provided arguments
     //create an external parameters struct
     ProcessingExternalParams params(
@@ -212,7 +212,7 @@ int main(int argc, char* argv[]) {
         1, // num_omp_threads
         0.5f, // percent_indices
         hdf_filename,
-        logpath,
+        log_filename,
         output_dir,
         id_field_name,
         ra_field_name,
