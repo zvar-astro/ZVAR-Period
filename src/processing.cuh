@@ -146,8 +146,8 @@ struct SourcesData {
     std::vector<float> flux_ivars;
     std::vector<float> fluxes_medians;
     std::vector<float> fluxes_mads;
-    std::vector<float> periodogram_medians;
-    std::vector<float> periodogram_mads;
+    std::vector<float> periodogram_means;
+    std::vector<float> periodogram_stds;
     std::vector<int> peak_indices;
     std::vector<float> peak_freqs;
     std::vector<float> peak_values;
@@ -164,8 +164,8 @@ struct SourcesData {
           flux_ivars(field_data.N_src_per_batch * field_data.N_exp, 0.0f),
           fluxes_medians(field_data.N_src_per_batch, 0.0f),
           fluxes_mads(field_data.N_src_per_batch, 0.0f),
-          periodogram_medians(field_data.N_src_per_batch * params.N_samples, 0.0f),
-          periodogram_mads(field_data.N_src_per_batch * params.N_samples, 0.0f),
+          periodogram_means(field_data.N_src_per_batch * params.N_samples, 0.0f),
+          periodogram_stds(field_data.N_src_per_batch * params.N_samples, 0.0f),
           peak_indices(field_data.N_src_per_batch * params.N_samples * N_peaks, -1),
           peak_freqs(field_data.N_src_per_batch * params.N_samples * N_peaks, -1.0f),
           peak_values(field_data.N_src_per_batch * params.N_samples * N_peaks, -1.0f) {}
@@ -212,8 +212,8 @@ struct DeviceArrays {
     float* periodograms_device;
     float* freqs_device;
     int* N_bins_device;
-    float* periodogram_medians_device;
-    float* periodogram_mads_device;
+    float* periodogram_means_device;
+    float* periodogram_stds_device;
     int* peak_indices_device;
     float* peak_values_device;
 
@@ -227,8 +227,8 @@ struct DeviceArrays {
           periodograms_device(nullptr),
           freqs_device(nullptr),
           N_bins_device(nullptr),
-          periodogram_medians_device(nullptr),
-          periodogram_mads_device(nullptr),
+          periodogram_means_device(nullptr),
+          periodogram_stds_device(nullptr),
           peak_indices_device(nullptr),
           peak_values_device(nullptr) {
         cudaMalloc(&t_device, field_data.N_exp * sizeof(float));
@@ -240,8 +240,8 @@ struct DeviceArrays {
         cudaMalloc(&periodograms_device, field_data.N_src_per_batch * field_data.N_freqs_per_batch * params.N_samples * sizeof(float));
         cudaMalloc(&freqs_device, field_data.N_freqs_per_batch * sizeof(float));
         cudaMalloc(&N_bins_device, params.N_samples * sizeof(int));
-        cudaMalloc(&periodogram_medians_device, field_data.N_src_per_batch * params.N_samples * sizeof(float));
-        cudaMalloc(&periodogram_mads_device, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMalloc(&periodogram_means_device, field_data.N_src_per_batch * params.N_samples * sizeof(float));
+        cudaMalloc(&periodogram_stds_device, field_data.N_src_per_batch * params.N_samples * sizeof(float));
         cudaMalloc(&peak_indices_device, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(int));
         cudaMalloc(&peak_values_device, field_data.N_src_per_batch * params.N_samples * N_peaks * sizeof(float));
 
@@ -280,8 +280,8 @@ struct DeviceArrays {
         cudaFree(periodograms_device);
         cudaFree(freqs_device);
         cudaFree(N_bins_device);
-        cudaFree(periodogram_medians_device);
-        cudaFree(periodogram_mads_device);
+        cudaFree(periodogram_means_device);
+        cudaFree(periodogram_stds_device);
         cudaFree(peak_indices_device);
         cudaFree(peak_values_device);
 

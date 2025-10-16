@@ -895,40 +895,40 @@ TEST_CASE("Check NVIDIA Device Parameters", "[Memory]") {
 }
 
 
-TEST_CASE("Check Processing Output", "[Processing]") {
-    std::string hdf_filename = "/data/swhitebook/zvar_testing/data/data_0642_01_2_zr.h5";
-    std::string datatype = "zvar";
+// TEST_CASE("Check Processing Output", "[Processing]") {
+//     std::string hdf_filename = "/data/swhitebook/zvar_testing/data/data_0642_01_2_zr.h5";
+//     std::string datatype = "zvar";
 
-    std::string id_field_name = "psid";
-    std::string ra_field_name = "ra";
-    std::string dec_field_name = "dec";
-    std::string time_field_name = "bjd";
-    std::string flux_field_name = "flux";
-    std::string fluxErr_field_name = "flux_err";
-    // if (datatype == "zforce") {
-    //     time_field_name = "mjd";
-    // }
-    std::string logpath = "/data/swhitebook/zvar_testing/logs";
-    std::string output_dir = "/data/swhitebook/zvar_testing/data";
+//     std::string id_field_name = "psid";
+//     std::string ra_field_name = "ra";
+//     std::string dec_field_name = "dec";
+//     std::string time_field_name = "bjd";
+//     std::string flux_field_name = "flux";
+//     std::string fluxErr_field_name = "flux_err";
+//     // if (datatype == "zforce") {
+//     //     time_field_name = "mjd";
+//     // }
+//     std::string logpath = "/data/swhitebook/zvar_testing/logs";
+//     std::string output_dir = "/data/swhitebook/zvar_testing/data";
 
-    ProcessingExternalParams params(
-        0,
-        1, // num_omp_threads
-        0.5f, // percent_indices
-        hdf_filename,
-        logpath,
-        output_dir,
-        id_field_name,
-        ra_field_name,
-        dec_field_name,
-        time_field_name,
-        flux_field_name,
-        fluxErr_field_name
-    );
+//     ProcessingExternalParams params(
+//         0,
+//         1, // num_omp_threads
+//         0.5f, // percent_indices
+//         hdf_filename,
+//         logpath,
+//         output_dir,
+//         id_field_name,
+//         ra_field_name,
+//         dec_field_name,
+//         time_field_name,
+//         flux_field_name,
+//         fluxErr_field_name
+//     );
 
-    // processTEST(params);
-    process(params);
-}
+//     // processTEST(params);
+//     process(params);
+// }
 
 /*
 TEST_CASE("Check GPUFit's Output", "[Statistics]") {

@@ -347,8 +347,8 @@ void processTEST(const ProcessingExternalParams& params) {
 
                 CudaComputeMedianandMAD<<<kernel_params.grid_size_postprocess,
                                           kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-                                                                                  device_arrays.periodogram_medians_device,
-                                                                                  device_arrays.periodogram_mads_device,
+                                                                                  device_arrays.periodogram_means_device,
+                                                                                  device_arrays.periodogram_stds_device,
                                                                                   static_cast<int>(N_freqs_current),
                                                                                   N_periodogram_curves);
                 cudaDeviceSynchronize();
@@ -368,11 +368,11 @@ void processTEST(const ProcessingExternalParams& params) {
                 std::vector<float> periodogram_mads_host(N_periodogram_curves);
 
                 cudaMemcpy(periodogram_medians_host.data(),
-                           device_arrays.periodogram_medians_device,
+                           device_arrays.periodogram_means_device,
                            N_periodogram_curves * sizeof(float),
                            cudaMemcpyDeviceToHost);
                 cudaMemcpy(periodogram_mads_host.data(),
-                           device_arrays.periodogram_mads_device,
+                           device_arrays.periodogram_stds_device,
                            N_periodogram_curves * sizeof(float),
                            cudaMemcpyDeviceToHost);
 
@@ -401,8 +401,8 @@ void processTEST(const ProcessingExternalParams& params) {
             // Normalize the periodograms by the median and MAD
             cudaComputeSignificance<<<kernel_params.grid_size_postprocess,
                                           kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
-                                                                                  device_arrays.periodogram_medians_device,
-                                                                                  device_arrays.periodogram_mads_device,
+                                                                                  device_arrays.periodogram_means_device,
+                                                                                  device_arrays.periodogram_stds_device,
                                                                                   static_cast<int>(N_freqs_current),
                                                                                   N_periodogram_curves);
             cudaDeviceSynchronize();
