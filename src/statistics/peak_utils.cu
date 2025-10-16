@@ -559,12 +559,42 @@ std::vector<int> find_peaks(const std::vector<float>& x,
     return itop;
 }
 
+// __global__ void cudaComputeSignificance(float* data, float* median, float* mad, int N_dat, int N_curves) {
+//     /*
+//     CUDA kernel to compute significance of each data point in the curves.
+//     The significance is computed as (data - median) / mad for each curve.
+//     Also cleans out NaN values.
+//     This is done in-place, modifying the original data array.
+
+//     data = pointer to the data (N_dat * N_curves)
+//     median = pointer to the median values (N_curves)
+//     mad = pointer to the MAD values (N_curves)
+//     N_dat = number of data points in each curve
+//     N_curves = number of curves
+//     */
+
+//     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+//     if (idx < N_curves) {
+//         float* curve_data = data + idx * N_dat;
+//         float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f; // Use a safe value for mad
+
+//         for (int i = 0; i < N_dat; i++) {
+//             curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
+//             if (isnan(curve_data[i])) {
+//                 curve_data[i] = -INFINITY; // Replace NaN with -INFINITY
+//             }
+//         }
+//     }
+// }
+
 __global__ void cudaComputeSignificance(float* data, float* median, float* mad, int N_dat, int N_curves) {
     /*
     CUDA kernel to compute significance of each data point in the curves.
     The significance is computed as (data - median) / mad for each curve.
     Also cleans out NaN values.
     This is done in-place, modifying the original data array.
+    If the mad is zero or very close to zero, the significance is set to -INFINITY`.
 
     data = pointer to the data (N_dat * N_curves)
     median = pointer to the median values (N_curves)
@@ -577,12 +607,17 @@ __global__ void cudaComputeSignificance(float* data, float* median, float* mad, 
 
     if (idx < N_curves) {
         float* curve_data = data + idx * N_dat;
-        float safe_mad = (mad[idx] > 1e-12f) ? mad[idx] : 1e-12f; // Use a safe value for mad
-
-        for (int i = 0; i < N_dat; i++) {
-            curve_data[i] = (curve_data[i] - median[idx]) / safe_mad;
-            if (isnan(curve_data[i])) {
-                curve_data[i] = -INFINITY; // Replace NaN with -INFINITY
+        if (mad[idx] <= 1e-12f) {
+            // If MAD is too small, set all values to -INFINITY
+            for (int i = 0; i < N_dat; i++) {
+                curve_data[i] = -INFINITY;
+            }
+        } else {
+            for (int i = 0; i < N_dat; i++) {
+                curve_data[i] = (curve_data[i] - median[idx]) / mad[idx];
+                if (isnan(curve_data[i])) {
+                    curve_data[i] = -INFINITY;
+                }
             }
         }
     }
@@ -854,6 +889,6 @@ __global__ void cudaFindPeaksChunk(
     // --- Write the top N peaks to the output ---
     for (int peak_rank = 0; peak_rank < N_peaks; ++peak_rank) {
         curve_peak_indices_out[peak_rank] = top_peak_indices[peak_rank];
-        curve_peak_values_out[peak_rank] = (top_peak_indices[peak_rank] != -1) ? top_peak_values[peak_rank] : 0.0f;
+        curve_peak_values_out[peak_rank] = (top_peak_indices[peak_rank] != -1) ? top_peak_values[peak_rank] : -1.0f;
     }
 }
