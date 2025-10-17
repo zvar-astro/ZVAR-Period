@@ -202,6 +202,12 @@ void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArra
                 sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
                 sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
                 sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
+            }
+            // If the median subtracted flux is more than 10 std BELOW the median, set it to 0, error to infinity, and ivar to 0
+            if (flux < -10 * std) {
+                sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
+                sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
+                sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
             } 
         }
     }
