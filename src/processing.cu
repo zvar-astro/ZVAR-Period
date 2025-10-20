@@ -203,6 +203,13 @@ void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArra
                 sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
                 sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
             } 
+
+            // If the median subtracted flux is more than 10 std BELOW the median, set it to 0, error to infinity, and ivar to 0
+            if (flux < -10 * std) {
+                sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
+                sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
+                sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
+            } 
             // else { // Otherwise, set the flux to the median subtracted value
 
 
@@ -512,21 +519,21 @@ void process(const ProcessingExternalParams& params) {
         auto duration_loadchunk = chrono::duration_cast<chrono::milliseconds>(stop_loadchunk - start_loadchunk);
         logMessage(params.log_path, params.input_hdf_filename, "Time to load chunk: " + to_string(duration_loadchunk.count()) + " milliseconds");
 
-        // // Attempt to retrieve a specific psid for debugging
-        // unsigned long target_psid = 80670010684926254;
-        // bool found_psid = false;
-        // unsigned long found_index = 0;
-        // for (unsigned long idx = 0; idx < objnum_periodograms; idx++) {
-        //     if (sources_data.psids[idx] == target_psid) {
-        //         found_psid = true;
-        //         found_index = idx;
-        //         break;
-        //     }
-        // }
+        // Attempt to retrieve a specific psid for debugging
+        unsigned long target_psid = 160263536145611018;
+        bool found_psid = false;
+        unsigned long found_index = 0;
+        for (unsigned long idx = 0; idx < objnum_periodograms; idx++) {
+            if (sources_data.psids[idx] == target_psid) {
+                found_psid = true;
+                found_index = idx;
+                break;
+            }
+        }
 
-        // if (found_psid) {
-        //     logMessage(params.log_path, params.input_hdf_filename, "Found target psid " + std::to_string(target_psid) + " at index " + std::to_string(found_index) + " in current chunk.");
-        // }
+        if (found_psid) {
+            logMessage(params.log_path, params.input_hdf_filename, "Found target psid " + std::to_string(target_psid) + " at index " + std::to_string(found_index) + " in current chunk.");
+        }
 
         auto start_removeOutliers = chrono::high_resolution_clock::now(); // Time removing outliers
 
@@ -620,7 +627,7 @@ void process(const ProcessingExternalParams& params) {
 
             auto stop_FPW = std::chrono::high_resolution_clock::now();
             auto duration_FPW = std::chrono::duration_cast<std::chrono::milliseconds>(stop_FPW - start_FPW);
-            // std::cout << "Time taken for cudaDeltaChi2Multibin: " << duration_FPW.count() << " ms" << std::endl;
+
 
             // If this is the first chunk, compute the median and MAD
             if (i == 0) {
@@ -633,16 +640,29 @@ void process(const ProcessingExternalParams& params) {
                 //                                                                   static_cast<int>(N_freqs_current),
                 //                                                                   N_periodogram_curves);
 
+                // If clip_pgram is set, use the clipping version
+                if (params.clip_pgram) {
+                    float N_sigma = 3.0;
+                    CudaComputeMeanandSTDClip<<<kernel_params.grid_size_postprocess,
+                                          kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                                                                            device_arrays.periodogram_medians_device,
+                                                                            device_arrays.periodogram_mads_device,
+                                                                            static_cast<int>(N_freqs_current),
+                                                                            N_periodogram_curves,
+                                                                            N_sigma);
+                } else {
                 CudaComputeMeanandSTD<<<kernel_params.grid_size_postprocess,
                                           kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
                                                                             device_arrays.periodogram_medians_device,
                                                                             device_arrays.periodogram_mads_device,
                                                                             static_cast<int>(N_freqs_current),
                                                                             N_periodogram_curves);
+                }
                 cudaDeviceSynchronize();
 
                 auto stop_means = std::chrono::high_resolution_clock::now();
                 auto duration_means = std::chrono::duration_cast<std::chrono::milliseconds>(stop_means - start_means);
+                logMessage(params.log_path, params.input_hdf_filename, "Time to process mean and std: " + to_string(duration_means.count()) + " milliseconds");
 
                 // std::cout << "Time taken for CudaComputeMeanandSTD: " << duration_means.count() << " ms" << std::endl;
 
@@ -655,43 +675,70 @@ void process(const ProcessingExternalParams& params) {
 
             // Normalize the periodograms by the median and MAD
             cudaComputeSignificance<<<kernel_params.grid_size_postprocess,
-                                          kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                                      kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
                                                                                   device_arrays.periodogram_medians_device,
                                                                                   device_arrays.periodogram_mads_device,
                                                                                   static_cast<int>(N_freqs_current),
                                                                                   N_periodogram_curves);
             cudaDeviceSynchronize();
 
-            // // --- Debug check for large periodogram values ---
-            // const float debug_threshold = 1e6; // Set your threshold here
-            // std::vector<float> periodograms_host(N_periodogram_curves * N_freqs_current);
-            // std::vector<float> medians_host(N_periodogram_curves);
-            // std::vector<float> mads_host(N_periodogram_curves);
-
-            // cudaMemcpy(periodograms_host.data(), device_arrays.periodograms_device, N_periodogram_curves * N_freqs_current * sizeof(float), cudaMemcpyDeviceToHost);
-            // cudaMemcpy(medians_host.data(), device_arrays.periodogram_medians_device, N_periodogram_curves * sizeof(float), cudaMemcpyDeviceToHost);
-            // cudaMemcpy(mads_host.data(), device_arrays.periodogram_mads_device, N_periodogram_curves * sizeof(float), cudaMemcpyDeviceToHost);
-
-            // for (int curve = 0; curve < N_periodogram_curves; ++curve) {
-            //     for (unsigned long freq = 0; freq < N_freqs_current; ++freq) {
-            //         float val = periodograms_host[curve * N_freqs_current + freq];
-            //         if (val > debug_threshold) {
-            //             std::cout << "[DEBUG] Large periodogram value: "
-            //                     << "curve=" << curve
-            //                     << ", freq=" << freq
-            //                     << ", value=" << val
-            //                     << ", median=" << medians_host[curve]
-            //                     << ", mad=" << mads_host[curve]
-            //                     << std::endl;
-            //         }
-            //     }
-            // }
-            // // --- End Debug check ---
-
             cudaStatus = cudaGetLastError();
             if (cudaStatus != cudaSuccess) {
                 std::cerr << "CUDA error in cudaComputeSignificance: " << cudaGetErrorString(cudaStatus) << std::endl;
                 exit(EXIT_FAILURE);
+            }
+
+            // If we found a psid for debugging, save the periodogram chunk
+            if (found_psid) {
+                // choose which sample for this source (0..params.N_samples-1)
+                int sample_idx = 1;
+
+                // compute the row index into the periodograms_device matrix
+                // periodograms_device is laid out row-major with N_periodogram_curves rows,
+                // where row = (source_index * params.N_samples) + sample_index
+                size_t curve_row = static_cast<size_t>(found_index) * static_cast<size_t>(params.N_samples) + static_cast<size_t>(sample_idx);
+
+                // pointer to start of row on device
+                float* src_ptr = device_arrays.periodograms_device + (curve_row * N_freqs_current);
+
+                // copy the chunk row to host
+                std::vector<float> chunk_row(N_freqs_current);
+                cudaMemcpy(chunk_row.data(), src_ptr, N_freqs_current * sizeof(float), cudaMemcpyDeviceToHost);
+
+                // build filename including chunk start index 'i' so multiple chunks don't clobber each other
+                std::ostringstream oss;
+                oss << "psid_" << target_psid << "_chunk_" << k << "_freqchunk_" << i << ".csv";
+                std::string pg_filename = oss.str();
+
+                // write CSV: frequency, significance (or whatever value is in periodograms_device)
+                std::ofstream ofs(pg_filename);
+                if (ofs.is_open()) {
+                    ofs << "frequency,significance\n";
+                    for (unsigned long fi = 0; fi < N_freqs_current; ++fi) {
+                        // field_data.fgrid is the full grid; frequency index is (i + fi)
+                        float freq = field_data.fgrid[i + fi];
+                        ofs << freq << "," << chunk_row[fi] << "\n";
+                    }
+                    ofs.close();
+                    logMessage(params.log_path, params.input_hdf_filename, "Wrote periodogram chunk for psid " + std::to_string(target_psid) + " to " + pg_filename);
+                } else {
+                    logMessage(params.log_path, params.input_hdf_filename, "Failed to open " + pg_filename + " for writing.");
+                }
+
+                // (optional) debug print first few values
+                for (int j = 0; j < 10 && j < static_cast<int>(N_freqs_current); ++j) {
+                    std::cout << "Periodogram value at freq idx " << (i + j) << ": " << chunk_row[j] << std::endl;
+                }
+
+                //Print the median and mad associated with the psid
+                float median_value;
+                float mad_value;
+
+                cudaMemcpy(&median_value, device_arrays.periodogram_medians_device + (found_index * params.N_samples) + sample_idx, sizeof(float), cudaMemcpyDeviceToHost);
+                cudaMemcpy(&mad_value, device_arrays.periodogram_mads_device + (found_index * params.N_samples) + sample_idx, sizeof(float), cudaMemcpyDeviceToHost);
+
+                std::cout << "Periodogram median for psid " << target_psid << ": " << median_value << std::endl;
+                std::cout << "Periodogram mad for psid " << target_psid << ": " << mad_value << std::endl;
             }
 
             //Check the peak_arrays.state_current_threshold and print the first value
@@ -771,18 +818,19 @@ void process(const ProcessingExternalParams& params) {
 
         // int src_idx = 722;
         // string object_filename = "object_" + std::to_string(src_idx) + "_chunk_" + std::to_string(k) + ".csv";
-        // // Check if the src idx is in the current chunk
-        // if (src_idx >= objstart_periodograms && src_idx < objstart_periodograms + objnum_periodograms) {
-        //     // Save the times and fluxes for the specific source to a CSV file
-        //     unsigned long object_index = src_idx - objstart_periodograms; // Get the index of the object in the current chunk
-        //     saveObjectTimesAndFluxToCSV(object_filename,
-        //                                  field_data.times_float,
-        //                                 //  sources_data.fluxes_no_baseline,
-        //                                 sources_data.fluxes,
-        //                                  sources_data.fluxErrs,
-        //                                  field_data.N_exp,
-        //                                  object_index);
-        // }
+        // Check if the src idx is in the current chunk
+        if (found_psid) {
+            logMessage(params.log_path, params.input_hdf_filename, "Found target psid " + std::to_string(target_psid) + " at index " + std::to_string(found_index) + " in current chunk.");
+            std::string psid_filename = "psid_" + std::to_string(target_psid) + "_chunk_" + std::to_string(k) + ".csv";
+            saveObjectTimesAndFluxToCSV(
+                psid_filename,
+                field_data.times_float,
+                sources_data.fluxes, // or sources_data.fluxes if you want raw fluxes
+                sources_data.fluxErrs,
+                field_data.N_exp,
+                found_index
+            );
+        }
 
         auto stop_processing = chrono::high_resolution_clock::now();
         auto duration_processing = chrono::duration_cast<chrono::milliseconds>(stop_processing - start_processing);

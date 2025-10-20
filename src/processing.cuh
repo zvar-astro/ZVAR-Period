@@ -62,7 +62,8 @@ struct ProcessingExternalParams {
     //Seasonal/Deep Drilling/Baseline Removal Modes
     bool seasonal = false; // Default: not seasonal
     bool deep_drilling = false; // Default: remove deep drilling
-    bool remove_baseline = true; // Default: not long period
+    bool remove_baseline = true; // Default: remove baseline
+    bool clip_pgram = false; // Default: no clipping of periodogram mean
 
     // Constructor
     ProcessingExternalParams(
@@ -81,6 +82,7 @@ struct ProcessingExternalParams {
         bool seasonal = false,
         bool deep_drilling = false,
         bool remove_baseline = true,
+        bool clip_pgram = false,
         double f_min = 1.0 / 10.0, // 10 day max period
         double f_max = 1440.0 / 5.0, // 5 min min period
         // double f_max = 1.0 / 50.0, // 50 day min period
@@ -113,6 +115,7 @@ struct ProcessingExternalParams {
           seasonal(seasonal),
           deep_drilling(deep_drilling),
           remove_baseline(remove_baseline),
+          clip_pgram(clip_pgram),
           success(false) {}
 };
 

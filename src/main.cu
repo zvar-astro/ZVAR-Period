@@ -44,11 +44,13 @@ int main(int argc, char* argv[]) {
             std::cout << "  <device>              CUDA device number (integer)\n";
             std::cout << "  <datatype>            'zvar' or 'zforce'\n";
             std::cout << "\nOptional arguments:\n";
-            std::cout << "  --seasonal <bool>         Seasonal mode (true/false or 1/0)\n";
-            std::cout << "  --deep_drilling <bool>    Include deep drilling (true/false or 1/0)\n";
-            std::cout << "  --remove_baseline <bool>  Remove baseline (true/false or 1/0)\n";
+            std::cout << "  --seasonal <bool>         Seasonal mode (true/false or 1/0) (default: false)\n";
+            std::cout << "  --deep_drilling <bool>    Include deep drilling (true/false or 1/0) (default: false)\n";
+            std::cout << "  --remove_baseline <bool>  Remove baseline (true/false or 1/0) (default: true)\n";
+            std::cout << "  --clip_pgram <bool>       Run two-pass sigma clip on pgram (true/false or 1/0) (default: false)\n";
             std::cout << "  --f_min <float>           Minimum frequency in days^-1 (default: 1.0/10.0)\n";
             std::cout << "  --f_max <float>           Maximum frequency in days^-1 (default: 1440.0/5.0)\n";
+            std::cout << "  --threshold <float>       Peak detection threshold (default: 10.0)\n";
             std::cout << "  -s, -d, -b, -min, -max    Short forms for above options\n";
             std::cout << "  -h, --help                Show this help message\n";
             std::cout << std::endl;
@@ -101,16 +103,18 @@ int main(int argc, char* argv[]) {
         cerr << "Invalid datatype. Please provide either 'zvar' or 'zforce'." << endl;
         return 1;
     }
-    cout << "Using datatype: " << datatype << endl;
+    // cout << "Using datatype: " << datatype << endl;
 
     // Default values for optional booleans
     bool seasonal = false;
     bool deep_drilling = false;
     bool remove_baseline = true;
+    bool clip_pgram = false;
 
     // Default values for f_min and f_max
     double f_min = 1.0 / 10.0; // 10 day max period
     double f_max = 1440.0 / 5.0; // 5 min min period
+    float peak_threshold = 10.0; // default peak detection S/N threshold
     // double f_max = 1.0 / 10.0, // 10 day min period
     // double f_min = 1.0 / (3.0 * 365), // 3 year max period
 
@@ -162,6 +166,16 @@ int main(int argc, char* argv[]) {
                 }
             }
             remove_baseline = parse_bool_arg(val, arg);
+        } else if (arg == "--clip_pgram" || arg == "-c") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            clip_pgram = parse_bool_arg(val, arg);
         } else if (arg == "--f_min" || arg == "-min") {
             if (val.empty()) {
                 if (i + 1 < argc) {
@@ -192,7 +206,24 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Invalid value for f_max: " << val << std::endl;
                 exit(1);
             }
-        } else {
+        } else if (arg == "--threshold" || arg == "-p") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            try {
+                peak_threshold = std::stof(val);
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Invalid value for peak_threshold: " << val << std::endl;
+                exit(1);
+            }
+        }
+        
+        else {
             std::cerr << "Unknown argument: " << arg << std::endl;
             exit(1);
         }
@@ -223,8 +254,14 @@ int main(int argc, char* argv[]) {
         seasonal,
         deep_drilling,
         remove_baseline,
+        clip_pgram,
         f_min,
-        f_max
+        f_max,
+        3, // freq_oversampling
+        15, // model_id
+        {20, 10, 5}, // N_bins
+        300, // peak_distance
+        peak_threshold
     );
 
     process(params);

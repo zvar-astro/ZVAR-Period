@@ -243,88 +243,272 @@ __global__ void CudaComputeMedianandMAD(float* data, float* medians, float* mads
     }
 }
 
-__global__ void CudaComputeMeanandSTD(float* data, float* means, float* stds, int N_dat, int N_curves) {
-    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+// __global__ void CudaComputeMeanandSTD(float* data, float* means, float* stds, int N_dat, int N_curves) {
+//     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (idx < N_curves) {
-        float* curve_data = data + idx * N_dat;
+//     if (idx < N_curves) {
+//         float* curve_data = data + idx * N_dat;
 
-        // Step 1: Compute sum, sumsq, and count, ignoring NaNs, zeros, and infinities
-        float sum = 0.0f;
-        float sumsq = 0.0f;
-        int valid_count = 0;
-        for (int i = 0; i < N_dat; i++) {
-            float val = curve_data[i];
-            if (!isnan(val) && val != 0.0f && isfinite(val)) {
-                sum += val;
-                sumsq += val * val;
-                valid_count++;
-            }
-        }
-        if (valid_count == 0) {
-            means[idx] = NAN;
-            stds[idx] = NAN;
-            return;
-        }
-
-        // Step 2: Compute mean and std
-        float mean = sum / valid_count;
-        float variance = (sumsq / valid_count) - (mean * mean);
-        means[idx] = mean;
-        stds[idx] = sqrtf(variance > 0.0f ? variance : 0.0f);
-    }
-}
-
-// __global__ void CudaComputeMeanandSTD(float* data, float* mean, float* std, int N_dat, int N_curves) {
-//     int curve_idx = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (curve_idx >= N_curves) return;
-
-//     float* curve_data = data + curve_idx * N_dat;
-
-//     extern __shared__ float shared[];
-//     float* sum_shared = shared;
-//     float* sumsq_shared = shared + blockDim.x;
-//     int* count_shared = (int*)(shared + 2 * blockDim.x);
-
-//     int tid = threadIdx.x;
-//     float local_sum = 0.0f;
-//     float local_sumsq = 0.0f;
-//     int local_count = 0;
-
-//     for (int i = tid; i < N_dat; i += blockDim.x) {
-//         float val = curve_data[i];
-//         if (!isnan(val) && val != 0.0f && isfinite(val)) {
-//             local_sum += val;
-//             local_sumsq += val * val;
-//             local_count += 1;
+//         // Step 1: Compute sum, sumsq, and count, ignoring NaNs, zeros, and infinities
+//         float sum = 0.0f;
+//         float sumsq = 0.0f;
+//         int valid_count = 0;
+//         for (int i = 0; i < N_dat; i++) {
+//             float val = curve_data[i];
+//             // if (!isnan(val) && val != 0.0f && isfinite(val)) {
+//             //     sum += val;
+//             //     sumsq += val * val;
+//             //     valid_count++;
+//             // }
+//             if (!isnan(val) && isfinite(val)) {
+//                 sum += val;
+//                 sumsq += val * val;
+//                 valid_count++;
+//             }
 //         }
-//     }
-
-//     sum_shared[tid] = local_sum;
-//     sumsq_shared[tid] = local_sumsq;
-//     count_shared[tid] = local_count;
-//     __syncthreads();
-
-//     if (tid == 0) {
-//         float total_sum = 0.0f;
-//         float total_sumsq = 0.0f;
-//         int total_count = 0;
-//         for (int i = 0; i < blockDim.x; ++i) {
-//             total_sum += sum_shared[i];
-//             total_sumsq += sumsq_shared[i];
-//             total_count += count_shared[i];
+//         if (valid_count == 0) {
+//             means[idx] = NAN;
+//             stds[idx] = NAN;
+//             return;
 //         }
-//         if (total_count > 1) {
-//             float m = total_sum / total_count;
-//             float variance = (total_sumsq / total_count) - (m * m);
-//             mean[curve_idx] = m;
-//             std[curve_idx] = sqrtf(variance > 0.0f ? variance : 0.0f);
-//         } else {
-//             mean[curve_idx] = NAN;
-//             std[curve_idx] = NAN;
-//         }
+
+//         // Step 2: Compute mean and std
+//         float mean = sum / valid_count;
+//         float variance = (sumsq / valid_count) - (mean * mean);
+//         means[idx] = mean;
+//         stds[idx] = sqrtf(variance > 0.0f ? variance : 0.0f);
 //     }
 // }
+
+__global__ void CudaComputeMeanandSTD(float* data, float* means, float* stds, int N_dat, int N_curves) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= (size_t)N_curves) return;
+
+    float* curve_data = data + idx * (size_t)N_dat;
+
+    // First pass: compute mean using double accumulation (ignore NaNs and non-finite)
+    double sum = 0.0;
+    int valid_count = 0;
+    for (int i = 0; i < N_dat; ++i) {
+        float v = curve_data[i];
+        if (!isnan(v) && isfinite(v)) {
+            sum += (double)v;
+            valid_count++;
+        }
+    }
+    if (valid_count == 0) {
+        means[idx] = NAN;
+        stds[idx] = NAN;
+        return;
+    }
+    double mean = sum / (double)valid_count;
+
+    // Second pass: compute sum of squared deviations in double
+    double ssd = 0.0;
+    for (int i = 0; i < N_dat; ++i) {
+        float v = curve_data[i];
+        if (!isnan(v) && isfinite(v)) {
+            double d = (double)v - mean;
+            ssd += d * d;
+        }
+    }
+
+    // Population variance (divide by N). Matches numpy.nanstd default (ddof=0).
+    double variance = ssd / (double)valid_count;
+
+    // Guard against tiny negative variance due to rounding
+    if (variance < 0.0 && variance > -1e-18) variance = 0.0;
+
+    means[idx] = (float)mean;
+    stds[idx] = (float)sqrt(variance);
+}
+
+// // Single-output sigma-clipping kernel (optimized pre-filter):
+// // compute mean/std (Welford) then sigma-clip using a fast float pre-check,
+// // only performing double Welford updates for accepted samples.
+// //
+// // data: [N_curves * N_dat] row-major
+// // means/stds: output arrays (one value per curve) -- final result will be the sigma-clipped mean/std
+// // n_sigma: clipping threshold (e.g. 3.0). If n_sigma < 0 => no clipping (write mean1/std1).
+// __global__ void CudaComputeMeanandSTDClip(
+//     float* data,
+//     float* means,
+//     float* stds,
+//     int N_dat,
+//     int N_curves,
+//     float n_sigma
+// ) {
+//     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (idx >= (size_t)N_curves) return;
+
+//     float* curve = data + idx * (size_t)N_dat;
+
+//     // ---- First pass: Welford (single-pass, stable) in double ----
+//     double mean1 = 0.0;
+//     double M2_1 = 0.0;
+//     int n1 = 0;
+//     for (int i = 0; i < N_dat; ++i) {
+//         float v = curve[i];
+//         if (!isnan(v) && isfinite(v)) {
+//             ++n1;
+//             double x = (double)v;
+//             double delta = x - mean1;
+//             mean1 += delta / (double)n1;
+//             M2_1 += delta * (x - mean1);
+//         }
+//     }
+
+//     if (n1 == 0) {
+//         means[idx] = NAN;
+//         stds[idx]  = NAN;
+//         return;
+//     }
+
+//     double var1 = M2_1 / (double)n1; // population variance (ddof=0)
+//     if (var1 < 0.0 && var1 > -1e-18) var1 = 0.0;
+//     double std1 = sqrt(var1);
+
+//     // If clipping is disabled or std1 tiny, write first-pass results and return.
+//     const double tiny_std = 1e-12;
+//     if (n_sigma < 0.0f || std1 <= tiny_std) {
+//         means[idx] = (float)mean1;
+//         stds[idx]  = (float)std1;
+//         return;
+//     }
+
+//     // ---- Second pass: fast float pre-filter then double Welford updates for survivors ----
+//     float mean1_f = (float)mean1;
+//     float clip_thresh_f = (float)(n_sigma * std1);
+
+//     double mean2 = 0.0;
+//     double M2_2 = 0.0;
+//     int n2 = 0;
+
+//     // Use a local pointer for __ldg; __ldg may improve read-only caching on some GPUs.
+//     const float* curve_ro = curve;
+
+//     for (int i = 0; i < N_dat; ++i) {
+//         // Use read-only load and float math for pre-check
+//         float v_f = __ldg(curve_ro + i);               // cheap read-only load
+//         if (!(v_f == v_f)) continue;                   // skip NaN quickly (NaN != NaN)
+//         if (!isfinite(v_f)) continue;                  // skip infinities (cheap)
+//         float dv = v_f - mean1_f;
+//         if (fabsf(dv) > clip_thresh_f) continue;      // cheap float absolute compare
+
+//         // Accept sample: do Welford update using double accumulators
+//         ++n2;
+//         double x = (double)v_f;
+//         double delta = x - mean2;
+//         mean2 += delta / (double)n2;
+//         M2_2 += delta * (x - mean2);
+//     }
+
+//     if (n2 == 0) {
+//         // No survivors: fall back to first-pass results
+//         means[idx] = (float)mean1;
+//         stds[idx]  = (float)std1;
+//         return;
+//     }
+
+//     double var2 = M2_2 / (double)n2;
+//     if (var2 < 0.0 && var2 > -1e-18) var2 = 0.0;
+//     means[idx] = (float)mean2;
+//     stds[idx]  = (float)sqrt(var2);
+// }
+
+__global__ void CudaComputeMeanandSTDClip(
+    float* data,
+    float* means,
+    float* stds,
+    int N_dat,
+    int N_curves,
+    float n_sigma
+) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= (size_t)N_curves) return;
+
+    // Row-major: curve start
+    const float* curve = data + idx * (size_t)N_dat;
+
+    // ----- First pass: stable Welford in double to get mean1/std1 -----
+    double mean1 = 0.0;
+    double M2_1  = 0.0;
+    int n1 = 0;
+
+    for (int i = 0; i < N_dat; ++i) {
+        float vf = __ldg(curve + i);
+        // fast NaN test: vf != vf -> NaN
+        if (!(vf == vf)) continue;
+        if (!isfinite(vf)) continue;
+        ++n1;
+        double x = (double)vf;
+        double delta = x - mean1;
+        mean1 += delta / (double)n1;
+        M2_1 += delta * (x - mean1);
+    }
+
+    if (n1 == 0) {
+        means[idx] = NAN;
+        stds[idx]  = NAN;
+        return;
+    }
+
+    double var1 = M2_1 / (double)n1; // population variance ddof=0
+    if (var1 < 0.0 && var1 > -1e-18) var1 = 0.0;
+    double std1 = sqrt(var1);
+
+    // If clipping disabled or std1 tiny, return first-pass results
+    const double tiny_std = 1e-12;
+    if (n_sigma < 0.0f || std1 <= tiny_std) {
+        means[idx] = (float)mean1;
+        stds[idx]  = (float)std1;
+        return;
+    }
+
+    // ----- Second pass: fast float pre-filter (squared compare) + double accumulators (sum, sumsq) -----
+    // Precompute thresholds in float/double
+    float mean1_f = (float)mean1;
+    // Compare squared distance to avoid sqrt/fabs per-sample:
+    // keep if (v - mean1_f)^2 <= (n_sigma * std1)^2
+    double clip_thresh_sq_d = (double)(n_sigma * std1);
+    clip_thresh_sq_d = clip_thresh_sq_d * clip_thresh_sq_d; // double
+
+    double sum_d = 0.0;
+    double sumsq_d = 0.0;
+    int n2 = 0;
+
+    // Use local pointer for __ldg
+    const float* curve_ro = curve;
+    for (int i = 0; i < N_dat; ++i) {
+        float vf = __ldg(curve_ro + i);               // read-only load
+        if (!(vf == vf)) continue;                    // skip NaN
+        if (!isfinite(vf)) continue;                  // skip infinities
+
+        double dv = (double)vf - (double)mean1_f;     // small double work for squared compare
+        double dv2 = dv * dv;
+        if (dv2 > clip_thresh_sq_d) continue;        // reject far-outliers
+
+        // Accepted sample: accumulate in double
+        ++n2;
+        double x = (double)vf;
+        sum_d += x;
+        sumsq_d += x * x;
+    }
+
+    if (n2 == 0) {
+        // no survivors -> fallback to first-pass
+        means[idx] = (float)mean1;
+        stds[idx]  = (float)std1;
+        return;
+    }
+
+    double mean2 = sum_d / (double)n2;
+    double var2 = (sumsq_d / (double)n2) - (mean2 * mean2);
+    if (var2 < 0.0 && var2 > -1e-18) var2 = 0.0;
+
+    means[idx] = (float)mean2;
+    stds[idx]  = (float)sqrt(var2);
+}
 
 
 std::tuple<float, float> pg_stats(std::vector<float> v) {
