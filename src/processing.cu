@@ -609,18 +609,29 @@ void process(const ProcessingExternalParams& params) {
             if (i == 0) {
                 auto start_means = std::chrono::high_resolution_clock::now();
 
+                // If clip_pgram is set, use the clipping version
+                if (params.clip_pgram) {
+                    float N_sigma = 3.0;
+                    CudaComputeMeanandSTDClip<<<kernel_params.grid_size_postprocess,
+                                          kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
+                                                                            device_arrays.periodogram_means_device,
+                                                                            device_arrays.periodogram_stds_device,
+                                                                            static_cast<int>(N_freqs_current),
+                                                                            N_periodogram_curves,
+                                                                            N_sigma);
+                } else {
                 CudaComputeMeanandSTD<<<kernel_params.grid_size_postprocess,
                                           kernel_params.block_size_postprocess>>>(device_arrays.periodograms_device,
                                                                             device_arrays.periodogram_means_device,
                                                                             device_arrays.periodogram_stds_device,
                                                                             static_cast<int>(N_freqs_current),
                                                                             N_periodogram_curves);
+                }
                 cudaDeviceSynchronize();
 
                 auto stop_means = std::chrono::high_resolution_clock::now();
                 auto duration_means = std::chrono::duration_cast<std::chrono::milliseconds>(stop_means - start_means);
-
-                // std::cout << "Time taken for CudaComputeMeanandSTD: " << duration_means.count() << " ms" << std::endl;
+                logMessage(params.log_path, params.input_hdf_filename, "Time to compute means and STDs: " + to_string(duration_means.count()) + " milliseconds");
 
                 cudaStatus = cudaGetLastError();
                 if (cudaStatus != cudaSuccess) {

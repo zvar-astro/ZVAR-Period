@@ -57,6 +57,15 @@ __global__ void CudaComputeMeanandSTD(
     int N_curves
 );
 
+__global__ void CudaComputeMeanandSTDClip(
+    float* data,
+    float* means,
+    float* stds,
+    int N_dat,
+    int N_curves,
+    float n_sigma
+);
+
 // Function to return both mean and stdev of vector
 std::tuple<float, float> pg_stats(
   std::vector<float> // v

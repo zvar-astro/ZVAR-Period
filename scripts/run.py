@@ -292,12 +292,12 @@ if __name__ == "__main__":
         case "run_field":
             run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, args.datatype)
         case "run_field_long_period":
-            optional_args = {"remove_baseline": 0, "f_min": 1.0 / (3.0 * 365), "f_max": 1.0 / 10.0}
+            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
             run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, args.datatype, optional_args)
         case "run_all":
             run_all(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype)
         case "run_all_long_period":
-            optional_args = {"remove_baseline": 0, "f_min": 1.0 / (3.0 * 365), "f_max": 1.0 / 10.0}
+            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
             run_all(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype, optional_args)
         case _:
             logging.error(f"Unknown function: {args.function}")
