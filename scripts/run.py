@@ -298,7 +298,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run cudaFPW batch processing.")
 
     # Required positional arguments
-    parser.add_argument("function", help="Function to run [run_field, run_field_long_period, run_all, run_all_long_period, run_queued, run_queued_long_period]")")
+    parser.add_argument("function", help="Function to run [run_field, run_field_long_period, run_all, run_all_long_period, run_queued, run_queued_long_period]")
     parser.add_argument("datatype", choices=["zvar", "zforce"], help="Data type (zvar or zforce)")
 
     # Optional arguments
