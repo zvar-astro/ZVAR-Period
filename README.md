@@ -123,6 +123,10 @@ cd packages
 git clone https://gitlab.com/libeigen/eigen.git
 git clone https://github.com/gpufit/Gpufit.git
 mkdir Gpufit-build
+
+# Set Gpufit to a specific, earlier version
+cd Gpufit
+git checkout c2f520d
 ```
 
 ### Step 5: Set Up Environment Variables
