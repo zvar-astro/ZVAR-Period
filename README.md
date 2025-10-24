@@ -120,8 +120,8 @@ mkdir -p packages
 cd packages
 
 # Clone required repositories
-git clone https://gitlab.com/libeigen/eigen.git
 git clone https://github.com/gpufit/Gpufit.git
+git clone https://github.com/catchorg/Catch2.git
 mkdir Gpufit-build
 
 # Set Gpufit to a specific, earlier version
@@ -148,9 +148,9 @@ export ZVAR_PERIOD_PATH="path_to_ZVAR-Period_on_your_system" # EDIT THIS LINE
 
 # To compile FPW and it's dependencies
 # You may need to adjust these paths based on your CUDA installation, and where you've cloned the repositories
-export EIGEN3_INCLUDE_DIR="${ZVAR_PERIOD_PATH}/packages/eigen"
 export GPUFIT_INCLUDE_DIR="${ZVAR_PERIOD_PATH}/packages/Gpufit/Gpufit"
 export GPUFIT_LIB_DIR="${ZVAR_PERIOD_PATH}/packages/Gpufit-build/Gpufit"
+export CATCH2_DIR="${ZVAR_PERIOD_PATH}/packages/Catch2$"
 
 # To run FPW (you can also just specify those later at run time, rather then setting them here)
 # You'll have to adjust these values based on your hardware, but here are some reasonable defaults:
