@@ -7,12 +7,17 @@ import os
 import signal
 import argparse
 import logging
+import numpy as np
 
 logging.basicConfig(
     level=logging.INFO,  # or logging.ERROR, logging.DEBUG, etc.
     format='[%(asctime)s] %(levelname)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+def writeout_field_log(field_logfile, field):
+    with open(field_logfile, 'a') as log:
+        log.write(f'Completed field: {str(field)}\n')
 
 def run_FPW(stop_event, device, filename, output_path, logfile, datatype, error_queue, optional_args=None):
     """
@@ -112,7 +117,7 @@ def run_file(task_queue, stop_event, device, output_path, logfile, datatype, err
         task_queue.task_done()
 
 
-def run_file_pool(num_threads, input_path, output_path, log_path, datatype, optional_args=None):
+def run_file_pool(num_threads, input_path, output_path, log_path, datatype, process_i=False, optional_args=None):
     """
     Process all files in the given input path using a thread pool.
 
@@ -130,14 +135,19 @@ def run_file_pool(num_threads, input_path, output_path, log_path, datatype, opti
         Prints status messages.
         Exits the program with code 0 on success, 1 on error.
     """
-    # List all files in the input_path (absolute paths only, skip subdirectories)
-    # files = [os.path.join(input_path, f) for f in os.listdir(input_path) if os.path.isfile(os.path.join(input_path, f))]
-
-    files = [
-    os.path.join(input_path, f)
-    for f in os.listdir(input_path)
-    if os.path.isfile(os.path.join(input_path, f)) and not f.endswith("i.h5") # Dont include i band
-    ]
+    # List all files in the input path excluding those ending with "i.h5"
+    if process_i:
+        files = [
+        os.path.join(input_path, f)
+        for f in os.listdir(input_path)
+        if os.path.isfile(os.path.join(input_path, f))
+        ]
+    else:
+        files = [
+        os.path.join(input_path, f)
+        for f in os.listdir(input_path)
+        if os.path.isfile(os.path.join(input_path, f)) and not f.endswith("i.h5") # Dont include i band
+        ]
     
     # Create a thread-safe queue and add each filename as a task
     task_queue = queue.Queue()
@@ -206,6 +216,7 @@ def run_field(num_threads, input_path, output_path, log_path, field, datatype, o
     logging.info(f"Processing field {field} of type {datatype} from {data_path} to {output_path}")
 
     run_file_pool(num_threads, data_path, output_path, log_path, datatype, optional_args)
+    writeout_field_log(os.path.join(log_path, f"completed_fields.log"), field)
 
 
 def run_all(num_threads, input_path, output_path, log_path, datatype, optional_args=None):
@@ -243,13 +254,51 @@ def run_all(num_threads, input_path, output_path, log_path, datatype, optional_a
         os.makedirs(field_output_dir, exist_ok=True)
         logging.info(f"Processing field {field}: {field_input_dir} -> {field_output_dir}")
         run_file_pool(num_threads, field_input_dir, field_output_dir, log_path, datatype, optional_args)
+        writeout_field_log(os.path.join(log_path, f"completed_fields.log"), field)
 
+
+def run_queued(num_threads, input_path, output_path, log_path, datatype, optional_args=None):
+    """
+    Run processing for fields listed in the manual queue file.
+
+    Args:
+    num_threads (int): Number of worker threads to use.
+    input_path (str): The input path containing all fields (directories).
+    output_path (str): The output path for the processed data.
+    log_path (str): The path for log files.
+    datatype (str): The data type (zvar or zforce).
+
+    Returns:
+        None
+    """
+    if not os.path.exists(input_path):
+        logging.error(f"Input path {input_path} does not exist.")
+        sys.exit(1)
+
+    queue_file = os.path.join(log_path, 'manual_queue.txt')
+    if not os.path.exists(queue_file):
+        logging.error(f"Queue file {queue_file} does not exist.")
+        sys.exit(1)
+
+    # List all fields in the queue file
+    field_list = np.loadtxt(queue_file, dtype=int)
+
+    for field in field_list:
+        field_input_dir = os.path.join(input_path, str(field).zfill(4))
+        field_output_dir = os.path.join(output_path, str(field).zfill(4))
+        if os.path.exists(field_output_dir):
+            logging.info(f"Skipping field {field}: output directory {field_output_dir} already exists.")
+            continue
+        os.makedirs(field_output_dir, exist_ok=True)
+        logging.info(f"Processing field {field}: {field_input_dir} -> {field_output_dir}")
+        run_file_pool(num_threads, field_input_dir, field_output_dir, log_path, datatype, optional_args)
+        writeout_field_log(os.path.join(log_path, f"completed_fields.log"), field)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run cudaFPW batch processing.")
 
     # Required positional arguments
-    parser.add_argument("function", help="Function to run (e.g., file, field, etc.)")
+    parser.add_argument("function", help="Function to run [run_field, run_field_long_period, run_all, run_all_long_period, run_queued, run_queued_long_period]")")
     parser.add_argument("datatype", choices=["zvar", "zforce"], help="Data type (zvar or zforce)")
 
     # Optional arguments
@@ -299,6 +348,11 @@ if __name__ == "__main__":
         case "run_all_long_period":
             optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
             run_all(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype, optional_args)
+        case "run_queued":
+            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype)
+        case "run_queued_long_period":
+            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype, optional_args)
         case _:
             logging.error(f"Unknown function: {args.function}")
             # Print the possible functions
