@@ -8,8 +8,12 @@ __global__ void cudaMakeIndices(const float* times, const float* freqs, unsigned
     if (timeIdx < N_dat && freqIdx < N_freqs) {
         float tf = times[timeIdx] * freqs[freqIdx];
         tf = tf - (int)tf;
-        // indices[timeIdx * N_freqs + freqIdx] = (unsigned char)(tf * N_bins);  // Coalesced access
-        indices[freqIdx * N_dat + timeIdx] = (unsigned char)(tf * N_bins);  // Coalesced access
+
+        // Use 64-bit offset to avoid overflow when N_freqs * N_dat > INT_MAX
+        size_t offset = static_cast<size_t>(freqIdx) * static_cast<size_t>(N_dat)
+                      + static_cast<size_t>(timeIdx);
+
+        indices[offset] = static_cast<unsigned char>(tf * N_bins);
     }
 }
 
