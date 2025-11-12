@@ -263,6 +263,7 @@ python -u scripts/runFiles.py
 - If using the package manager version of CUDA, you may need to adjust CMake paths accordingly
 - The repository URL in Step 5 needs to be replaced with your actual repository URL
 - All necessary files are assumed to be part of your Git repository
+- There is a built-in filtering of known terrestrial frequencies from the frequency grid used to run FPW. Alternatively, a custom list of frequencies + width can be loaded from a CSV file with the `FREQUENCIES_TO_FLAG_FILE` environment variable. These will not complement the existing filtering, but replace it.
 
 ### Troubleshooting
 - If building Gpufit fails with CUDA errors, verify your CUDA installation with `nvcc --version`
