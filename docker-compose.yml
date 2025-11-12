@@ -20,4 +20,3 @@ services:
       - CHUNK_CPU_CAP=0.8
       - GPU_CAP=0.9
       - N_GPUS=2
-      - N_FREQ_BATCH=50000
