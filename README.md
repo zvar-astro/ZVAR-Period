@@ -159,7 +159,6 @@ export N_GPUS=1 # Number of GPUs to use
 export TOTAL_CPU_CAP=0.8 # Memory usage cap for all processes
 export CHUNK_CPU_CAP=0.8 # Memory usage cap for a single chunk of lightcurves
 export GPU_CAP=0.9 # GPU memory usage cap
-export N_FREQ_BATCH=50000 # Number of frequencies to process in a single batch
 
 # Last but not least, we specify where our input data is located, and where the output data should go
 # and where the binaries we've built are found
@@ -263,6 +262,7 @@ python -u scripts/runFiles.py
 - If using the package manager version of CUDA, you may need to adjust CMake paths accordingly
 - The repository URL in Step 5 needs to be replaced with your actual repository URL
 - All necessary files are assumed to be part of your Git repository
+- There is a built-in filtering of known terrestrial frequencies from the frequency grid used to run FPW. Alternatively, a custom list of frequencies + width can be loaded from a CSV file with the `FREQUENCIES_TO_FLAG_FILE` environment variable. These will not complement the existing filtering, but replace it.
 
 ### Troubleshooting
 - If building Gpufit fails with CUDA errors, verify your CUDA installation with `nvcc --version`

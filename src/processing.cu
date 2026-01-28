@@ -59,11 +59,23 @@ void createAndFilterFrequencyGrid(
             return;
         }
 
-        // Erase terrestrial frequencies from vector
+        // Erase flagged frequencies from vector
+        // If an environment variable FREQUENCIES_TO_FLAG_FILE is set, use that file to flag frequencies
+        // otherwise use the default built-in terrestrial frequency flagging
+        // The file should be a CSV with two columns: frequency,width (with or without header, comma separated)
         auto start_erase_freq = chrono::high_resolution_clock::now();
-        std::vector<int> freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs_initial); // Get indices to exclude terrestrial frequencies
 
-        // Remove terrestrial frequencies
+        std::vector<int> freq_flags;
+        const char* freq_flag_file = std::getenv("FREQUENCIES_TO_FLAG_FILE");
+        if (freq_flag_file != nullptr) {
+            logMessage(params.log_path, params.input_hdf_filename, "Using frequency flag file: " + std::string(freq_flag_file));
+            freq_flags = flagFreqFromFile(fgrid.data(), N_freqs_initial, std::string(freq_flag_file));
+        } else {
+            logMessage(params.log_path, params.input_hdf_filename, "No frequency flag file provided. Using default terrestrial frequency flagging.");
+            freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs_initial);
+        }
+
+        // Remove flagged frequencies
         auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
             static int index = 0;
             return freq_flags[index++] == 0;
@@ -77,7 +89,7 @@ void createAndFilterFrequencyGrid(
 
         auto duration_erase_freq = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::high_resolution_clock::now() - start_erase_freq);
-        logMessage(params.log_path, params.input_hdf_filename, "Time to filter terrestrial frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
+        logMessage(params.log_path, params.input_hdf_filename, "Time to filter flagged frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
         logMessage(params.log_path, params.input_hdf_filename, "Filtered frequency grid size: " + std::to_string(field_data.fgrid.size()));
     } catch (const std::exception& e) {
         logMessage(params.log_path, params.input_hdf_filename, "Error creating or filtering frequency grid: " + std::string(e.what()));

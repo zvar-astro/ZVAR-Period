@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <functional>
 #include <chrono>
+#include <fstream>
 #include "peak_utils.cuh"
 
 
@@ -409,6 +410,39 @@ std::tuple<float, float> pg_stats(std::vector<float> v) {
     return {m, stdev};
 }
 
+// let's wrap the logic where we iterate over the freqs + width pairs to create the keepFreq vector
+std::vector<int> flagFreqs(
+    float* frequencies,
+    int Nfreq,
+    const std::vector<std::pair<float,float>>& ef
+) {
+    /*
+    Function to identify and flag frequencies
+    from an array of frequency values, based on provided
+    frequency/width pairs.
+
+    frequencies = pointer to array of frequencies
+    Nfreq       = number of frequencies
+    ef          = vector of frequency/width pairs
+    */
+
+    size_t Nregions = ef.size();
+
+    // Create vector to store keep/discard indices
+    std::vector<int> keepFreq(Nfreq,1);
+
+    // Iterate over all frequencies
+    for (int i = 0; i < Nfreq; i++) {
+        for (size_t j = 0; j < Nregions; j++) {
+            if ((frequencies[i] > ef[j].first - ef[j].second) &&
+                (frequencies[i] < ef[j].first + ef[j].second)) {
+                keepFreq[i] = 0;
+            }
+        }
+    }
+    return keepFreq;
+}
+
 
 std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
 
@@ -457,20 +491,8 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
         {f_day*9,  0.05f},      // 1/9 day
         {f_day*10, 0.05f}       // 1/10 day
     };
-    size_t Nregions = ef.size();
 
-    // Create vector to store keep/discard indices
-    std::vector<int> keepFreq(Nfreq,1);
-
-    // Iterate over all frequencies
-    for (int i = 0; i < Nfreq; i++) {
-        for (int j = 0; j < Nregions; j++) {
-            if ((frequencies[i] > ef[j].first - ef[j].second) &&
-                (frequencies[i] < ef[j].first + ef[j].second)) {
-                keepFreq[i] = 0;
-            }
-        }
-    }
+    std::vector<int> keepFreq = flagFreqs(frequencies, Nfreq, ef);
 
     // Clear memory
     std::vector<std::pair<float,float>>().swap(ef);
@@ -478,7 +500,64 @@ std::vector<int> flagTerrestrialFreq(float* frequencies, int Nfreq) {
     return keepFreq;
 }
 
+// let's split reading from the CSV file into its own function
+std::vector<std::pair<float,float>> readFreqWidthFromFile(const std::string& filename) {
+    std::vector<std::pair<float,float>> ef;
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open terrestrial frequency file: " + filename);
+    }
 
+    // we may have header lines, comments, etc., so let's read line by line
+    // and parse only valid frequency,width pairs
+    std::string line;
+    while (std::getline(file, line)) {
+        // Skip empty lines or lines starting with a non-numeric character
+        if (line.empty() || (!isdigit(line[0]) && line[0] != '-' && line[0] != '.')) {
+            continue;
+        }
+        std::istringstream ss(line);
+        std::string freq_str, width_str;
+        if (std::getline(ss, freq_str, ',') && std::getline(ss, width_str)) {
+            try {
+                float freq = std::stof(freq_str);
+                float width = std::stof(width_str);
+                ef.emplace_back(freq, width);
+            } catch (const std::invalid_argument& e) {
+                throw std::runtime_error("Error parsing line in terrestrial frequency file: " + line);
+            }
+        }
+    }
+    file.close();
+
+    // if its empty, throw an error
+    if (ef.empty()) {
+        throw std::runtime_error("No valid frequency/width pairs found in file: " + filename);
+    }
+    return ef;
+}
+
+std::vector<int> flagFreqFromFile(float* frequencies, int Nfreq, const std::string& filename) {
+    /*
+    Function to identify and flag frequencies
+    from an array of frequency values, based on a CSV file
+    containing frequency/width pairs.
+
+    frequencies = pointer to array of frequencies
+    Nfreq       = number of frequencies
+    filename    = path to CSV file with frequency/width pairs
+    */
+
+    // Read frequency/width pairs from CSV file
+    std::vector<std::pair<float,float>> ef = readFreqWidthFromFile(filename);
+
+    std::vector<int> keepFreq = flagFreqs(frequencies, Nfreq, ef);
+
+    // Clear memory
+    std::vector<std::pair<float,float>>().swap(ef);
+
+    return keepFreq;
+}
 
 std::vector<int> find_peaks(const std::vector<float>& x,
                             const int N_peaks,

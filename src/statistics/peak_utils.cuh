@@ -71,10 +71,27 @@ std::tuple<float, float> pg_stats(
   std::vector<float> // v
 );
 
+std::vector<int> flagFreqs(
+    float*,
+    int,
+    const std::vector<std::pair<float,float>>&
+);
+
 // Function to identify and flag terrestrial frequencies
 std::vector<int> flagTerrestrialFreq(
   float*, // frequencies
   int     // Nfreq
+);
+
+std::vector<std::pair<float,float>> readFreqWidthFromFile(
+  const std::string& // filename
+);
+
+// Function to identify and flag terrestrial frequencies
+std::vector<int> flagFreqFromFile(
+  float*, // frequencies
+  int,    // Nfreq
+  const std::string& // filename
 );
 
 // A peak finding function based on scipy.signal.find_peaks
