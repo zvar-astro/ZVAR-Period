@@ -64,6 +64,8 @@ struct ProcessingExternalParams {
     bool deep_drilling = false; // Default: remove deep drilling
     bool remove_baseline = true; // Default: remove baseline
     bool clip_pgram = false; // Default: not clip periodogram
+    bool filter_freq = true; // Default: filter frequency grid
+    std::string filter_freq_filename = ""; // Default: no filter frequency file
 
     // Constructor
     ProcessingExternalParams(
@@ -83,6 +85,8 @@ struct ProcessingExternalParams {
         bool deep_drilling = false,
         bool remove_baseline = true,
         bool clip_pgram = false,
+        bool filter_freq = true,
+        const std::string& filter_freq_filename = "",
         double f_min = 1.0 / 10.0, // 10 day max period
         double f_max = 1440.0 / 5.0, // 5 min min period
         // double f_max = 1.0 / 50.0, // 50 day min period
@@ -116,6 +120,8 @@ struct ProcessingExternalParams {
           deep_drilling(deep_drilling),
           remove_baseline(remove_baseline),
           clip_pgram(clip_pgram),
+          filter_freq(filter_freq),
+          filter_freq_filename(filter_freq_filename),
           success(false) {}
 };
 

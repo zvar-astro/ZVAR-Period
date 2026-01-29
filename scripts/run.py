@@ -19,7 +19,7 @@ def writeout_field_log(field_logfile, field):
     with open(field_logfile, 'a') as log:
         log.write(f'Completed field: {str(field)}\n')
 
-def run_FPW(stop_event, device, filename, output_path, logfile, datatype, error_queue, optional_args=None):
+def run_FPW(stop_event, device, filename, output_path, logfile, error_queue, optional_args=None):
     """
     Run the cudaFPW executable for a single file using taskset to bind to a specific CPU core.
 
@@ -29,7 +29,6 @@ def run_FPW(stop_event, device, filename, output_path, logfile, datatype, error_
         filename (str): Path to the input file to process.
         output_path (str): Path to the output directory.
         logfile (str): Path to the log file.
-        datatype (str): Data type argument for cudaFPW (e.g., 'zvar' or 'zforce').
         error_queue (queue.Queue): Queue to report errors back to the main thread.
         optional_args (dict, optional): Additional optional arguments to pass to cudaFPW.
 
@@ -51,18 +50,27 @@ def run_FPW(stop_event, device, filename, output_path, logfile, datatype, error_
         output_path,
         logfile,
         str(device),
-        datatype
     ]
 
+    # if optional_args is not None:
+    #     for arg, value in optional_args.items():
+    #         if value is not None:
+    #             command.append(f"--{arg}={value}")
+    #         else: # Error if value is None
+    #             logging.error(f"Optional argument {arg} has no value.")
+    #             stop_event.set()
+    #             return
+                
     if optional_args is not None:
         for arg, value in optional_args.items():
             if value is not None:
-                command.append(f"--{arg}={value}")
+                # Format as separate arguments instead of --arg=value
+                command.append(f"--{arg}")
+                command.append(str(value))
             else: # Error if value is None
                 logging.error(f"Optional argument {arg} has no value.")
                 stop_event.set()
                 return
-                
 
     try:
         # Start the process and stream output
@@ -90,7 +98,7 @@ def run_FPW(stop_event, device, filename, output_path, logfile, datatype, error_
         error_queue.put(str(e))
 
 
-def run_file(task_queue, stop_event, device, output_path, logfile, datatype, error_queue, optional_args=None):
+def run_file(task_queue, stop_event, device, output_path, logfile, error_queue, optional_args=None):
     """
     Worker thread function to process files from the task queue.
 
@@ -100,7 +108,6 @@ def run_file(task_queue, stop_event, device, output_path, logfile, datatype, err
         device (int): CPU core/device number to bind the process to.
         output_path (str): Path to the output directory.
         logfile (str): Path to the log file.
-        datatype (str): Data type argument for cudaFPW.
         error_queue (queue.Queue): Queue to report errors back to the main thread.
         optional_args (dict, optional): Additional optional arguments to pass to cudaFPW.
 
@@ -113,11 +120,11 @@ def run_file(task_queue, stop_event, device, output_path, logfile, datatype, err
         except queue.Empty:
             break
 
-        run_FPW(stop_event, device, filename, output_path, logfile, datatype, error_queue, optional_args)
+        run_FPW(stop_event, device, filename, output_path, logfile, error_queue, optional_args)
         task_queue.task_done()
 
 
-def run_file_pool(num_threads, input_path, output_path, log_path, datatype, process_i=False, optional_args=None):
+def run_file_pool(num_threads, input_path, output_path, log_path, process_i=False, optional_args=None):
     """
     Process all files in the given input path using a thread pool.
 
@@ -126,7 +133,6 @@ def run_file_pool(num_threads, input_path, output_path, log_path, datatype, proc
         input_path (str): Directory containing input files.
         output_path (str): Directory to write output files.
         log_path (str): Directory to write log files.
-        datatype (str): Data type argument for cudaFPW.
 
     Returns:
         None
@@ -163,7 +169,7 @@ def run_file_pool(num_threads, input_path, output_path, log_path, datatype, proc
     for i in range(num_threads):
         device = i
         logfile = os.path.join(log_path, f"device_{device}.log")
-        t = threading.Thread(target=run_file, args=(task_queue, stop_event, device, output_path, logfile, datatype, error_queue, optional_args))
+        t = threading.Thread(target=run_file, args=(task_queue, stop_event, device, output_path, logfile, error_queue, optional_args))
         t.start()
         threads.append(t)
 
@@ -191,18 +197,16 @@ def run_file_pool(num_threads, input_path, output_path, log_path, datatype, proc
         return
 
 
-def run_field(num_threads, input_path, output_path, log_path, field, datatype, optional_args=None):
+def run_field(num_threads, input_path, output_path, log_path, field, optional_args=None):
     """
     Run the specified field processing function.
 
     Args:
         num_threads (int): Number of worker threads to use.
-        field (str): The field to process.
         input_path (str): The input path containing the field data.
         output_path (str): The output path for the processed data.
         log_path (str): The path for log files.
-        field (int): The field number to process.
-        datatype (str): The data type (zvar or zforce).
+        field (str): The field number to process.
 
     Returns:
         None
@@ -213,13 +217,13 @@ def run_field(num_threads, input_path, output_path, log_path, field, datatype, o
         logging.error(f"Data path {data_path} does not exist.")
         sys.exit(1)
 
-    logging.info(f"Processing field {field} of type {datatype} from {data_path} to {output_path}")
+    logging.info(f"Processing field {field} from {data_path} to {output_path}")
 
-    run_file_pool(num_threads, data_path, output_path, log_path, datatype, optional_args)
+    run_file_pool(num_threads, data_path, output_path, log_path, optional_args=optional_args)
     writeout_field_log(os.path.join(log_path, f"completed_fields.log"), field)
 
 
-def run_all(num_threads, input_path, output_path, log_path, datatype, optional_args=None):
+def run_all(num_threads, input_path, output_path, log_path, optional_args=None):
     """
     Run processing for all fields in the input path.
 
@@ -228,8 +232,6 @@ def run_all(num_threads, input_path, output_path, log_path, datatype, optional_a
         input_path (str): The input path containing all fields (directories).
         output_path (str): The output path for the processed data.
         log_path (str): The path for log files.
-        datatype (str): The data type (zvar or zforce).
-
     Returns:
         None
     """
@@ -237,7 +239,7 @@ def run_all(num_threads, input_path, output_path, log_path, datatype, optional_a
         logging.error(f"Input path {input_path} does not exist.")
         sys.exit(1)
 
-    logging.info(f"Processing all fields of type {datatype} from {input_path} to {output_path}")
+    logging.info(f"Processing all fields from {input_path} to {output_path}")
 
     # List all subdirectories (fields) in input_path
     field_dirs = [d for d in os.listdir(input_path) if os.path.isdir(os.path.join(input_path, d))]
@@ -253,11 +255,11 @@ def run_all(num_threads, input_path, output_path, log_path, datatype, optional_a
             continue
         os.makedirs(field_output_dir, exist_ok=True)
         logging.info(f"Processing field {field}: {field_input_dir} -> {field_output_dir}")
-        run_file_pool(num_threads, field_input_dir, field_output_dir, log_path, datatype, optional_args)
+        run_file_pool(num_threads, field_input_dir, field_output_dir, log_path, optional_args=optional_args)
         writeout_field_log(os.path.join(log_path, f"completed_fields.log"), field)
 
 
-def run_queued(num_threads, input_path, output_path, log_path, datatype, optional_args=None):
+def run_queued(num_threads, input_path, output_path, log_path, optional_args=None):
     """
     Run processing for fields listed in the manual queue file.
 
@@ -266,8 +268,6 @@ def run_queued(num_threads, input_path, output_path, log_path, datatype, optiona
     input_path (str): The input path containing all fields (directories).
     output_path (str): The output path for the processed data.
     log_path (str): The path for log files.
-    datatype (str): The data type (zvar or zforce).
-
     Returns:
         None
     """
@@ -281,7 +281,7 @@ def run_queued(num_threads, input_path, output_path, log_path, datatype, optiona
         sys.exit(1)
 
     # List all fields in the queue file
-    field_list = np.loadtxt(queue_file, dtype=int)
+    field_list = np.loadtxt(queue_file, dtype=str)
 
     for field in field_list:
         field_input_dir = os.path.join(input_path, str(field).zfill(4))
@@ -291,7 +291,7 @@ def run_queued(num_threads, input_path, output_path, log_path, datatype, optiona
             continue
         os.makedirs(field_output_dir, exist_ok=True)
         logging.info(f"Processing field {field}: {field_input_dir} -> {field_output_dir}")
-        run_file_pool(num_threads, field_input_dir, field_output_dir, log_path, datatype, optional_args)
+        run_file_pool(num_threads, field_input_dir, field_output_dir, log_path, optional_args=optional_args)
         writeout_field_log(os.path.join(log_path, f"completed_fields.log"), field)
 
 if __name__ == "__main__":
@@ -299,7 +299,6 @@ if __name__ == "__main__":
 
     # Required positional arguments
     parser.add_argument("function", help="Function to run [run_field, run_field_long_period, run_all, run_all_long_period, run_queued, run_queued_long_period]")
-    parser.add_argument("datatype", choices=["zvar", "zforce"], help="Data type (zvar or zforce)")
 
     # Optional arguments
     parser.add_argument("--num_threads", type=int, default=int(os.environ.get('NUM_THREADS', 4)),
@@ -310,7 +309,7 @@ if __name__ == "__main__":
                         help="Path to output data directory (default: $ZVAR_OUTPUT_DIRECTORY)")
     parser.add_argument("--log_path", default=os.environ.get('ZVAR_LOG_DIRECTORY'),
                         help="Path to log directory (default: $ZVAR_LOG_DIRECTORY)")
-    parser.add_argument("--field", type=int)
+    parser.add_argument("--field", type=str)
 
     args = parser.parse_args()
 
@@ -333,26 +332,44 @@ if __name__ == "__main__":
     # Print for debugging
     logging.info(f"Input path: {args.input_path}")
     logging.info(f"Output path: {args.output_path}")
-    logging.info(f"Datatype: {args.datatype}")
     logging.info(f"Num threads: {args.num_threads}")
 
     # Call the appropriate function
     match args.function:
-        case "run_field":
-            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, args.datatype)
-        case "run_field_long_period":
+        case "run_imdiff_field":
+            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field)
+        case "run_imdiff_field_long_period":
             optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
-            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, args.datatype, optional_args)
-        case "run_all":
-            run_all(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype)
-        case "run_all_long_period":
+            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, optional_args)
+        case "run_all_imdiff":
+            run_all(args.num_threads, args.input_path, args.output_path, args.log_path)
+        case "run_all_imdiff_long_period":
             optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
-            run_all(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype, optional_args)
-        case "run_queued":
-            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype)
-        case "run_queued_long_period":
+            run_all(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
+        case "run_queued_imdiff":
+            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path)
+        case "run_queued_imdiff_long_period":
             optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
-            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, args.datatype, optional_args)
+            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
+
+        case "run_zforce_field":
+            optional_args = {"remove_baseline": 0, "filter_freq": 0}
+            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, optional_args)
+        case "run_zforce_field_long_period":
+            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, optional_args)
+        case "run_all_zforce":
+            optional_args = {"remove_baseline": 0, "filter_freq": 0}
+            run_all(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
+        case "run_all_zforce_long_period":
+            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            run_all(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
+        case "run_queued_zforce":
+            optional_args = {"remove_baseline": 0, "filter_freq": 0}
+            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
+        case "run_queued_zforce_long_period":
+            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
         case _:
             logging.error(f"Unknown function: {args.function}")
             # Print the possible functions

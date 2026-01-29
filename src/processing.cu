@@ -33,14 +33,76 @@ FieldData loadAndPrepareFieldData(const ProcessingExternalParams& params) {
     return field_data;
 }
 
+// /**
+//  * @brief Creates a frequency grid and filters out terrestrial frequencies
+//  * 
+//  * This function creates a frequency grid based on the provided parameters and filters out terrestrial frequencies.
+//  * 
+//  * @param params The processing parameters
+//  * @param data The field data to add the frequency grid to
+//  * @return true if the frequency grid was created and filtered successfully, false otherwise
+//  */
+// void createAndFilterFrequencyGrid(
+//     const ProcessingExternalParams& params,
+//     FieldData& field_data) { // Takes FieldData by reference
+
+//     logMessage(params.log_path, params.input_hdf_filename, "Creating and filtering frequency grid...");
+//     try {
+//         // std::vector<double> times_double(field_data.times_float.begin(), field_data.times_float.end());
+//         std::vector<double> fgrid_double = freq_grid(field_data.times_double, params.f_min, params.f_max, params.freq_oversampling);
+//         std::vector<float> fgrid(fgrid_double.begin(), fgrid_double.end());
+//         unsigned long N_freqs_initial = fgrid.size();
+
+//         if (N_freqs_initial == 0) {
+//             logMessage(params.log_path, params.input_hdf_filename, "Frequency grid is empty after creation.");
+//             field_data.success = false; // Grid creation resulted in empty, likely a failure
+//             return;
+//         }
+
+//         // Erase flagged frequencies from vector
+//         // The file should be a CSV with two columns: frequency,width (with or without header, comma separated)
+//         auto start_erase_freq = chrono::high_resolution_clock::now();
+
+//         std::vector<int> freq_flags;
+//         const char* freq_flag_file = std::getenv("FREQUENCIES_TO_FLAG_FILE");
+//         if (freq_flag_file != nullptr) {
+//             logMessage(params.log_path, params.input_hdf_filename, "Using frequency flag file: " + std::string(freq_flag_file));
+//             freq_flags = flagFreqFromFile(fgrid.data(), N_freqs_initial, std::string(freq_flag_file));
+//         } else {
+//             logMessage(params.log_path, params.input_hdf_filename, "No frequency flag file provided. Using default terrestrial frequency flagging.");
+//             freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs_initial);
+//         }
+
+//         // Remove flagged frequencies
+//         auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
+//             static int index = 0;
+//             return freq_flags[index++] == 0;
+//         });
+//         fgrid.erase(badElements, fgrid.end());
+
+//         unsigned long N_freqs = fgrid.size(); // Update the NFREQ value
+
+//         field_data.fgrid = fgrid; // Store the filtered frequency grid 
+//         field_data.N_freqs = N_freqs; // Save the number of frequencies
+
+//         auto duration_erase_freq = std::chrono::duration_cast<std::chrono::milliseconds>(
+//             std::chrono::high_resolution_clock::now() - start_erase_freq);
+//         logMessage(params.log_path, params.input_hdf_filename, "Time to filter flagged frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
+//         logMessage(params.log_path, params.input_hdf_filename, "Filtered frequency grid size: " + std::to_string(field_data.fgrid.size()));
+//     } catch (const std::exception& e) {
+//         logMessage(params.log_path, params.input_hdf_filename, "Error creating or filtering frequency grid: " + std::string(e.what()));
+//         field_data.success = false; // Grid creation resulted in empty, likely a failure
+//         return;
+//     }
+// }
+
 /**
  * @brief Creates a frequency grid and filters out terrestrial frequencies
  * 
  * This function creates a frequency grid based on the provided parameters and filters out terrestrial frequencies.
  * 
  * @param params The processing parameters
- * @param data The field data to add the frequency grid to
- * @return true if the frequency grid was created and filtered successfully, false otherwise
+ * @param field_data The field data to add the frequency grid to
  */
 void createAndFilterFrequencyGrid(
     const ProcessingExternalParams& params,
@@ -48,52 +110,53 @@ void createAndFilterFrequencyGrid(
 
     logMessage(params.log_path, params.input_hdf_filename, "Creating and filtering frequency grid...");
     try {
-        // std::vector<double> times_double(field_data.times_float.begin(), field_data.times_float.end());
         std::vector<double> fgrid_double = freq_grid(field_data.times_double, params.f_min, params.f_max, params.freq_oversampling);
         std::vector<float> fgrid(fgrid_double.begin(), fgrid_double.end());
         unsigned long N_freqs_initial = fgrid.size();
 
         if (N_freqs_initial == 0) {
             logMessage(params.log_path, params.input_hdf_filename, "Frequency grid is empty after creation.");
-            field_data.success = false; // Grid creation resulted in empty, likely a failure
+            field_data.success = false;
             return;
         }
 
-        // Erase flagged frequencies from vector
-        // If an environment variable FREQUENCIES_TO_FLAG_FILE is set, use that file to flag frequencies
-        // otherwise use the default built-in terrestrial frequency flagging
-        // The file should be a CSV with two columns: frequency,width (with or without header, comma separated)
-        auto start_erase_freq = chrono::high_resolution_clock::now();
+        // Only filter frequencies if filter_freq is enabled
+        if (params.filter_freq) {
+            auto start_erase_freq = chrono::high_resolution_clock::now();
 
-        std::vector<int> freq_flags;
-        const char* freq_flag_file = std::getenv("FREQUENCIES_TO_FLAG_FILE");
-        if (freq_flag_file != nullptr) {
-            logMessage(params.log_path, params.input_hdf_filename, "Using frequency flag file: " + std::string(freq_flag_file));
-            freq_flags = flagFreqFromFile(fgrid.data(), N_freqs_initial, std::string(freq_flag_file));
+            std::vector<int> freq_flags;
+            
+            // Use custom frequency file if provided, otherwise use default terrestrial frequencies
+            if (!params.filter_freq_filename.empty()) {
+                logMessage(params.log_path, params.input_hdf_filename, "Using custom frequency filter file: " + params.filter_freq_filename);
+                freq_flags = flagFreqFromFile(fgrid.data(), N_freqs_initial, params.filter_freq_filename.c_str());
+            } else {
+                logMessage(params.log_path, params.input_hdf_filename, "Using default terrestrial frequency filtering.");
+                freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs_initial);
+            }
+
+            // Remove flagged frequencies
+            auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
+                static int index = 0;
+                return freq_flags[index++] == 0;
+            });
+            fgrid.erase(badElements, fgrid.end());
+
+            auto duration_erase_freq = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::high_resolution_clock::now() - start_erase_freq);
+            logMessage(params.log_path, params.input_hdf_filename, "Time to filter flagged frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
         } else {
-            logMessage(params.log_path, params.input_hdf_filename, "No frequency flag file provided. Using default terrestrial frequency flagging.");
-            freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs_initial);
+            logMessage(params.log_path, params.input_hdf_filename, "Frequency filtering disabled as per user request.");
         }
 
-        // Remove flagged frequencies
-        auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
-            static int index = 0;
-            return freq_flags[index++] == 0;
-        });
-        fgrid.erase(badElements, fgrid.end());
+        unsigned long N_freqs = fgrid.size();
+        field_data.fgrid = fgrid;
+        field_data.N_freqs = N_freqs;
 
-        unsigned long N_freqs = fgrid.size(); // Update the NFREQ value
-
-        field_data.fgrid = fgrid; // Store the filtered frequency grid 
-        field_data.N_freqs = N_freqs; // Save the number of frequencies
-
-        auto duration_erase_freq = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::high_resolution_clock::now() - start_erase_freq);
-        logMessage(params.log_path, params.input_hdf_filename, "Time to filter flagged frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
         logMessage(params.log_path, params.input_hdf_filename, "Filtered frequency grid size: " + std::to_string(field_data.fgrid.size()));
     } catch (const std::exception& e) {
         logMessage(params.log_path, params.input_hdf_filename, "Error creating or filtering frequency grid: " + std::string(e.what()));
-        field_data.success = false; // Grid creation resulted in empty, likely a failure
+        field_data.success = false;
         return;
     }
 }

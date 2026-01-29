@@ -27,8 +27,8 @@ void handler() {
 
 int main(int argc, char* argv[]) {
     // Check if the correct number of arguments is provided
-    if (argc < 6) {
-        cerr << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <path_to_logfile> <device> <datatype> (zvar or zforce)" << endl;
+    if (argc < 5) {
+        cerr << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <path_to_logfile> <device>" << endl;
         return 1;
     }
 
@@ -42,12 +42,13 @@ int main(int argc, char* argv[]) {
             std::cout << "  <path_to_output>      Path to output directory\n";
             std::cout << "  <path_to_logfile>     Path to log file\n";
             std::cout << "  <device>              CUDA device number (integer)\n";
-            std::cout << "  <datatype>            'zvar' or 'zforce'\n";
             std::cout << "\nOptional arguments:\n";
             std::cout << "  --seasonal <bool>         Seasonal mode (true/false or 1/0) (default: false)\n";
             std::cout << "  --deep_drilling <bool>    Include deep drilling (true/false or 1/0) (default: false)\n";
             std::cout << "  --remove_baseline <bool>  Remove baseline (true/false or 1/0) (default: true)\n";
             std::cout << "  --clip_pgram <bool>       Run two-pass sigma clip on pgram (true/false or 1/0) (default: false)\n";
+            std::cout << "  --filter_freq <bool>      Filter sidereal harmonics out of the frequency grid (true/false or 1/0) (default: true)\n";
+            std::cout << "  --filter_freq_file <string> Path to csv containing sidereal harmonics to filter. If none, a default is applied. (default: none)\n";
             std::cout << "  --f_min <float>           Minimum frequency in days^-1 (default: 1.0/10.0)\n";
             std::cout << "  --f_max <float>           Maximum frequency in days^-1 (default: 1440.0/5.0)\n";
             std::cout << "  --threshold <float>       Peak detection threshold (default: 10.0)\n";
@@ -97,20 +98,14 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // get the datatype from the command line argument
-    string datatype = argv[5];
-    if (datatype != "zvar" && datatype != "zforce") {
-        cerr << "Invalid datatype. Please provide either 'zvar' or 'zforce'." << endl;
-        return 1;
-    }
-    // cout << "Using datatype: " << datatype << endl;
-
     // Default values for optional booleans
     bool seasonal = false;
     bool deep_drilling = false;
     bool remove_baseline = true;
     bool clip_pgram = false;
-
+    bool filter_freq = true;
+    string filter_freq_filename = "";
+    
     // Default values for f_min and f_max
     double f_min = 1.0 / 10.0; // 10 day max period
     double f_max = 1440.0 / 5.0; // 5 min min period
@@ -127,7 +122,7 @@ int main(int argc, char* argv[]) {
     };
 
     // Parse the optional arguments
-    for (int i = 6; i < argc; ++i) {
+    for (int i = 5; i < argc; ++i) {
         std::string arg = argv[i];
         std::string val;
         // Check for --option=value format
@@ -176,6 +171,32 @@ int main(int argc, char* argv[]) {
                 }
             }
             clip_pgram = parse_bool_arg(val, arg);
+        } else if (arg == "--filter_freq" || arg == "-ff") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            filter_freq = parse_bool_arg(val, arg);
+        } else if (arg == "--filter_freq_file" || arg == "-fff") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            // Validate that the file exists
+            std::ifstream file_check(val);
+            if (!file_check.good()) {
+                std::cerr << "Filter frequency file does not exist: " << val << std::endl;
+                exit(1);
+            }
+            filter_freq_filename = val;
         } else if (arg == "--f_min" || arg == "-min") {
             if (val.empty()) {
                 if (i + 1 < argc) {
@@ -255,6 +276,8 @@ int main(int argc, char* argv[]) {
         deep_drilling,
         remove_baseline,
         clip_pgram,
+        filter_freq,
+        filter_freq_filename,
         f_min,
         f_max,
         3, // freq_oversampling

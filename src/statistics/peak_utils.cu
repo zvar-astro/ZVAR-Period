@@ -12,6 +12,7 @@
 #include <functional>
 #include <chrono>
 #include <fstream>
+#include <sstream>
 #include "peak_utils.cuh"
 
 
