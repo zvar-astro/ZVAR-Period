@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-h" || arg == "--help") {
-            std::cout << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <device> <datatype> [options]\n";
+            std::cout << "Usage: " << argv[0] << " <path_to_matchfile> <path_to_output> <device> [options]\n";
             std::cout << "\nRequired arguments:\n";
             std::cout << "  <path_to_matchfile>   Path to input HDF5 matchfile\n";
             std::cout << "  <path_to_output>      Path to output directory\n";
