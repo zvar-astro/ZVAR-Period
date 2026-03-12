@@ -267,3 +267,69 @@ python -u scripts/runFiles.py
 ### Troubleshooting
 - If building Gpufit fails with CUDA errors, verify your CUDA installation with `nvcc --version`
 - For package manager CUDA installations, you may need to specify the CUDA path explicitly during CMake configuration: `cmake -DCUDA_TOOLKIT_ROOT_DIR=/path/to/cuda ../Gpufit`
+
+## Output HDF5 File Format
+
+After processing, results are written to an HDF5 file located at:
+
+```
+{OUTPUT_DIR}/{input_file_stem}_results.h5
+```
+
+The file uses a flat structure — all datasets are stored directly in the root group (`/`) with no sub-groups.
+
+### Datasets
+
+| Dataset | Group | Data Type | Shape | Description |
+|---|---|---|---|---|
+| `psids` | `/` | `uint64` | `[N_src]` | Pan-STARRS source identifier for each light curve |
+| `ra` | `/` | `float32` | `[N_src]` | Right ascension of each source (degrees) |
+| `dec` | `/` | `float32` | `[N_src]` | Declination of each source (degrees) |
+| `valid` | `/` | `float32` | `[N_src]` | Fraction of exposures retained after outlier filtering (0–1) |
+| `bestFreqs` | `/` | `float32` | `[N_src * N_samples * N_peaks]` | Frequencies (cycles/day) of the top periodogram peaks, stored as a flattened 1-D array |
+| `significance` | `/` | `float32` | `[N_src * N_samples * N_peaks]` | Periodogram power at each peak frequency, stored as a flattened 1-D array |
+| `means` | `/` | `float32` | `[N_src * N_samples]` | Mean periodogram power for each source and binning scheme, stored as a flattened 1-D array |
+| `stds` | `/` | `float32` | `[N_src * N_samples]` | Standard deviation of the periodogram for each source and binning scheme, stored as a flattened 1-D array |
+
+### Dimensions
+
+| Symbol | Default value | Description |
+|---|---|---|
+| `N_src` | — | Total number of sources in the input file |
+| `N_samples` | `3` | Number of phase-binning schemes (corresponding to 20, 10, and 5 bins) |
+| `N_peaks` | `32` | Maximum number of peaks stored per source per binning scheme |
+
+### Array indexing
+
+The multi-dimensional datasets (`bestFreqs`, `significance`, `means`, `stds`) are stored as flattened 1-D arrays. The mapping between a logical index `(i, j, k)` and the flat index is:
+
+| Dataset | Flat index formula | Description of `(i, j, k)` |
+|---|---|---|
+| `bestFreqs` | `i * N_samples * N_peaks + j * N_peaks + k` | `i` = source, `j` = binning scheme, `k` = peak rank |
+| `significance` | `i * N_samples * N_peaks + j * N_peaks + k` | `i` = source, `j` = binning scheme, `k` = peak rank |
+| `means` | `i * N_samples + j` | `i` = source, `j` = binning scheme |
+| `stds` | `i * N_samples + j` | `i` = source, `j` = binning scheme |
+
+Peak entries where no significant peak was detected are stored as `-1.0` for `bestFreqs` and IEEE 754 negative infinity (`-inf`) for `significance`.
+
+### Reading the output with Python
+
+```python
+import h5py
+import numpy as np
+
+with h5py.File("results.h5", "r") as f:
+    psids   = f["psids"][:]        # shape (N_src,)
+    ra      = f["ra"][:]           # shape (N_src,)
+    dec     = f["dec"][:]          # shape (N_src,)
+    valid   = f["valid"][:]        # shape (N_src,)
+
+    N_samples = 3
+    N_peaks   = 32
+
+    # Reshape multi-dimensional arrays for convenience
+    best_freqs   = f["bestFreqs"][:].reshape(-1, N_samples, N_peaks)   # (N_src, N_samples, N_peaks)
+    significance = f["significance"][:].reshape(-1, N_samples, N_peaks) # (N_src, N_samples, N_peaks)
+    means        = f["means"][:].reshape(-1, N_samples)                 # (N_src, N_samples)
+    stds         = f["stds"][:].reshape(-1, N_samples)                  # (N_src, N_samples)
+```
