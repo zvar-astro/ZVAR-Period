@@ -53,6 +53,8 @@ struct ProcessingExternalParams {
     // Periodogram (FPW) Parameters
     std::vector<int> N_bins = {20, 10, 5}; // Default: 20, 10, 5 bins
     int N_samples = N_bins.size(); // Compute N_samples as the length of N_bins
+    std::optional<int> upper_clip_bound = 5; // Default: 5 STD upper clip bound
+    std::optional<int> lower_clip_bound = std::nullopt; // Default: No lower clip
 
     // Peak Finding Parameters
     int peak_distance = 300; // Minimum distance between peaks
@@ -89,9 +91,9 @@ struct ProcessingExternalParams {
         const std::string& filter_freq_filename = "",
         double f_min = 1.0 / 10.0, // 10 day max period
         double f_max = 1440.0 / 5.0, // 5 min min period
-        // double f_max = 1.0 / 50.0, // 50 day min period
-        // double f_min = 1.0 / (3.0 * 365), // 3 year max period
         int freq_oversampling = 3,
+        std::optional<int> upper_clip_bound = std::nullopt,
+        std::optional<int> lower_clip_bound = std::nullopt,
         int model_id = 15,
         const std::vector<int>& N_bins = {20, 10, 5},
         int peak_distance = 300,
@@ -111,6 +113,8 @@ struct ProcessingExternalParams {
           f_min(f_min),
           f_max(f_max),
           freq_oversampling(freq_oversampling),
+          upper_clip_bound(upper_clip_bound),
+          lower_clip_bound(lower_clip_bound),
           model_id(model_id),
           N_bins(N_bins),
           N_samples(N_bins.size()),
@@ -367,7 +371,7 @@ void initializeChunkParameters(const ProcessingExternalParams& params, FieldData
 void loadChunkData(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data,
                    unsigned long objstart, unsigned long objnum);
 
-void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays,
+void removeOutliers(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays,
                     KernelLaunchParams& kernel_params, unsigned long objnum_periodograms);
 
 void processBaselineRemoval(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data,

@@ -97,8 +97,6 @@ __global__ void cudaDeltaChi2Multibin(float* y, float* ivar, const unsigned char
                     ytCinvV += ytCinvVShared[index * blockDim.x + dataAddress];
                 }
                 float Minv = __fdividef(1.0f, 2.0f * acc);
-                // float Minv = __fdividef(1.0f, acc);
-                // size_t idx = freq + curve * (size_t)N_freqs + i * (size_t)N_curves * (size_t)N_freqs;
                 size_t idx = freq + i * (size_t)N_freqs + curve * (size_t)N_samples * N_freqs;
                 deltaChiArr[idx] += ytCinvV * Minv * ytCinvV;
             }

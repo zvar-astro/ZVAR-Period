@@ -225,7 +225,7 @@ void processTEST(const ProcessingExternalParams& params) {
         auto start_removeOutliers = chrono::high_resolution_clock::now(); // Time removing outliers
 
         // Call removeOutliers here
-        removeOutliers(field_data, sources_data, device_arrays, kernel_params, objnum_periodograms);
+        removeOutliers(params, field_data, sources_data, device_arrays, kernel_params, objnum_periodograms);
 
         auto stop_removeOutliers = chrono::high_resolution_clock::now();
         auto duration_removeOutliers = chrono::duration_cast<chrono::milliseconds>(stop_removeOutliers - start_removeOutliers);

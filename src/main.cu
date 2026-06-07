@@ -52,6 +52,9 @@ int main(int argc, char* argv[]) {
             std::cout << "  --f_min <float>           Minimum frequency in days^-1 (default: 1.0/10.0)\n";
             std::cout << "  --f_max <float>           Maximum frequency in days^-1 (default: 1440.0/5.0)\n";
             std::cout << "  --threshold <float>       Peak detection threshold (default: 10.0)\n";
+            std::cout << "  --oversample <int>        Frequency grid oversampling factor (default: 3)\n";
+            std::cout << "  --upper_clip_bound optional<int>  Upper clip bound in standard deviations for light curve clipping (default: 5)\n";
+            std::cout << "  --lower_clip_bound optional<int>  Lower clip bound in standard deviations for light curve clipping (default: none)\n";
             std::cout << "  -s, -d, -b, -min, -max    Short forms for above options\n";
             std::cout << "  -h, --help                Show this help message\n";
             std::cout << std::endl;
@@ -110,8 +113,11 @@ int main(int argc, char* argv[]) {
     double f_min = 1.0 / 10.0; // 10 day max period
     double f_max = 1440.0 / 5.0; // 5 min min period
     float peak_threshold = 10.0; // default peak detection S/N threshold
-    // double f_max = 1.0 / 10.0, // 10 day min period
-    // double f_min = 1.0 / (3.0 * 365), // 3 year max period
+    int oversample = 3; // default frequency grid oversampling factor
+
+    // Default values for clipping bounds
+    std::optional<int> upper_clip_bound = 5; // Default: 5 STD upper clip bound
+    std::optional<int> lower_clip_bound = std::nullopt; // Default: No lower clip
 
     //Helper function for parsing optional arguments
     auto parse_bool_arg = [](const std::string& val, const std::string& arg_name) -> bool {
@@ -227,6 +233,21 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Invalid value for f_max: " << val << std::endl;
                 exit(1);
             }
+        } else if (arg == "--oversample" || arg == "-o") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            try {
+                oversample = std::stoi(val);
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Invalid value for oversample: " << val << std::endl;
+                exit(1);
+            }
         } else if (arg == "--threshold" || arg == "-p") {
             if (val.empty()) {
                 if (i + 1 < argc) {
@@ -241,6 +262,44 @@ int main(int argc, char* argv[]) {
             } catch (const std::invalid_argument&) {
                 std::cerr << "Invalid value for peak_threshold: " << val << std::endl;
                 exit(1);
+            }
+        } else if (arg == "--upper_clip_bound" || arg == "-ucb") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            if (val == "none" || val == "None") {
+                upper_clip_bound = std::nullopt;
+            } else {
+                try {
+                    upper_clip_bound = std::stoi(val);
+                } catch (const std::invalid_argument&) {
+                    std::cerr << "Invalid value for upper_clip_bound: " << val << std::endl;
+                    exit(1);
+                }
+            }
+        } else if (arg == "--lower_clip_bound" || arg == "-lcb") {
+            if (val.empty()) {
+                if (i + 1 < argc) {
+                    val = argv[++i];
+                } else {
+                    std::cerr << "Missing value for " << arg << std::endl;
+                    exit(1);
+                }
+            }
+            if (val == "none" || val == "None") {
+                lower_clip_bound = std::nullopt;
+            } else {
+                try {
+                    lower_clip_bound = std::stoi(val);
+                } catch (const std::invalid_argument&) {
+                    std::cerr << "Invalid value for lower_clip_bound: " << val << std::endl;
+                    exit(1);
+                }
             }
         }
         
@@ -280,7 +339,9 @@ int main(int argc, char* argv[]) {
         filter_freq_filename,
         f_min,
         f_max,
-        3, // freq_oversampling
+        oversample, // freq_oversampling
+        upper_clip_bound,
+        lower_clip_bound,
         15, // model_id
         {20, 10, 5}, // N_bins
         300, // peak_distance

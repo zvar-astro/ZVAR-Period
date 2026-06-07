@@ -96,7 +96,9 @@ void calcDeviations(float *, float *, float, size_t);
 void normalizeLC(float *, int, int);
 
 // Function to create a new directory for output files
-std::string createOutputFilepath(std::string output_dir, std::string input_filename);
+std::string createOutputFilepath(std::string output_dir, std::string input_hdf_filename);
+
+std::string createLogFilepath(std::string output_dir, std::string input_hdf_filename);
 
 // Function to create a new HDF5 file to store periodogram results
 void createResults(std::string, int, int, int);

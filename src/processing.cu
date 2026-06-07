@@ -33,69 +33,6 @@ FieldData loadAndPrepareFieldData(const ProcessingExternalParams& params) {
     return field_data;
 }
 
-// /**
-//  * @brief Creates a frequency grid and filters out terrestrial frequencies
-//  * 
-//  * This function creates a frequency grid based on the provided parameters and filters out terrestrial frequencies.
-//  * 
-//  * @param params The processing parameters
-//  * @param data The field data to add the frequency grid to
-//  * @return true if the frequency grid was created and filtered successfully, false otherwise
-//  */
-// void createAndFilterFrequencyGrid(
-//     const ProcessingExternalParams& params,
-//     FieldData& field_data) { // Takes FieldData by reference
-
-//     logMessage(params.log_path, params.input_hdf_filename, "Creating and filtering frequency grid...");
-//     try {
-//         // std::vector<double> times_double(field_data.times_float.begin(), field_data.times_float.end());
-//         std::vector<double> fgrid_double = freq_grid(field_data.times_double, params.f_min, params.f_max, params.freq_oversampling);
-//         std::vector<float> fgrid(fgrid_double.begin(), fgrid_double.end());
-//         unsigned long N_freqs_initial = fgrid.size();
-
-//         if (N_freqs_initial == 0) {
-//             logMessage(params.log_path, params.input_hdf_filename, "Frequency grid is empty after creation.");
-//             field_data.success = false; // Grid creation resulted in empty, likely a failure
-//             return;
-//         }
-
-//         // Erase flagged frequencies from vector
-//         // The file should be a CSV with two columns: frequency,width (with or without header, comma separated)
-//         auto start_erase_freq = chrono::high_resolution_clock::now();
-
-//         std::vector<int> freq_flags;
-//         const char* freq_flag_file = std::getenv("FREQUENCIES_TO_FLAG_FILE");
-//         if (freq_flag_file != nullptr) {
-//             logMessage(params.log_path, params.input_hdf_filename, "Using frequency flag file: " + std::string(freq_flag_file));
-//             freq_flags = flagFreqFromFile(fgrid.data(), N_freqs_initial, std::string(freq_flag_file));
-//         } else {
-//             logMessage(params.log_path, params.input_hdf_filename, "No frequency flag file provided. Using default terrestrial frequency flagging.");
-//             freq_flags = flagTerrestrialFreq(fgrid.data(), N_freqs_initial);
-//         }
-
-//         // Remove flagged frequencies
-//         auto badElements = std::remove_if(fgrid.begin(), fgrid.end(), [&](float freq) {
-//             static int index = 0;
-//             return freq_flags[index++] == 0;
-//         });
-//         fgrid.erase(badElements, fgrid.end());
-
-//         unsigned long N_freqs = fgrid.size(); // Update the NFREQ value
-
-//         field_data.fgrid = fgrid; // Store the filtered frequency grid 
-//         field_data.N_freqs = N_freqs; // Save the number of frequencies
-
-//         auto duration_erase_freq = std::chrono::duration_cast<std::chrono::milliseconds>(
-//             std::chrono::high_resolution_clock::now() - start_erase_freq);
-//         logMessage(params.log_path, params.input_hdf_filename, "Time to filter flagged frequencies: " + std::to_string(duration_erase_freq.count()) + " ms");
-//         logMessage(params.log_path, params.input_hdf_filename, "Filtered frequency grid size: " + std::to_string(field_data.fgrid.size()));
-//     } catch (const std::exception& e) {
-//         logMessage(params.log_path, params.input_hdf_filename, "Error creating or filtering frequency grid: " + std::string(e.what()));
-//         field_data.success = false; // Grid creation resulted in empty, likely a failure
-//         return;
-//     }
-// }
-
 /**
  * @brief Creates a frequency grid and filters out terrestrial frequencies
  * 
@@ -236,7 +173,7 @@ void loadChunkData(const ProcessingExternalParams& params, FieldData& field_data
 }
 
 
-void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays, KernelLaunchParams& kernel_params, unsigned long objnum_periodograms) {
+void removeOutliers(const ProcessingExternalParams& params, FieldData& field_data, SourcesData& sources_data, DeviceArrays& device_arrays, KernelLaunchParams& kernel_params, unsigned long objnum_periodograms) {
 
     cudaError_t cudaStatus;
     // Find the medians and MADS of the fluxes
@@ -272,18 +209,22 @@ void removeOutliers(FieldData& field_data, SourcesData& sources_data, DeviceArra
         for (unsigned long j = 0; j < field_data.N_exp; j++) {
             float flux = sources_data.fluxes[i * field_data.N_exp + j] - median; // Subtract the median from the flux
 
-            // If the median subtracted flux is more than 5 std ABOVE from the median, set it to 0, error to infinity, and ivar to 0
-            if (flux > 5 * std) {
-                sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
-                sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
-                sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
+            if (params.upper_clip_bound.has_value()) {
+                // If the median subtracted flux is more than upper_clip_bound ABOVE from the median, set it to 0, error to infinity, and ivar to 0
+                if (flux > params.upper_clip_bound.value() * std) {
+                    sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
+                    sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
+                    sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
+                }
             }
-            // If the median subtracted flux is more than 10 std BELOW the median, set it to 0, error to infinity, and ivar to 0
-            if (flux < -10 * std) {
-                sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
-                sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
-                sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
-            } 
+            // If the median subtracted flux is more than lower_clip_bound BELOW the median, set it to 0, error to infinity, and ivar to 0
+            if (params.lower_clip_bound.has_value()) {
+                if (flux < -params.lower_clip_bound.value() * std) {
+                    sources_data.fluxes[i * field_data.N_exp + j] = 0.0f; // Set flux to 0
+                    sources_data.fluxErrs[i * field_data.N_exp + j] = INFINITY; // Set error to infinity
+                    sources_data.flux_ivars[i * field_data.N_exp + j] = 0.0f; // Set ivar to 0
+                }
+            }
         }
     }
     // Reset y_device since we use it again later.
@@ -487,6 +428,37 @@ void removeTempStatus(const ProcessingExternalParams& params, string results_fil
 }
 
 
+void logProcessingParams(const ProcessingExternalParams& params, string log_filename) {
+    std::ofstream outfile(log_filename);
+    
+    // Get current timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+    std::stringstream timestamp_ss;
+    timestamp_ss << std::put_time(std::localtime(&time), "%Y-%m-%dT%H:%M:%S");
+    
+    outfile << std::fixed << std::setprecision(10);
+    outfile << "{\n";
+    outfile << "  \"metadata\": {\"timestamp\": \"" << timestamp_ss.str() << "\"},\n";
+    outfile << "  \"hardware\": {\"device\": " << params.device << ", \"num_omp_threads\": " << params.num_omp_threads << ", \"percent_indices\": " << params.percent_indices << "},\n";
+    outfile << "  \"files\": {\"input_hdf\": \"" << params.input_hdf_filename << "\", \"log_path\": \"" << params.log_path << "\", \"output_dir\": \"" << params.output_dir << "\"},\n";
+    outfile << "  \"hdf5_fields\": {\"id\": \"" << params.id_field_name << "\", \"ra\": \"" << params.ra_field_name << "\", \"dec\": \"" << params.dec_field_name << "\", \"time\": \"" << params.time_field_name << "\", \"flux\": \"" << params.flux_field_name << "\", \"fluxErr\": \"" << params.fluxErr_field_name << "\"},\n";
+    outfile << "  \"frequency_grid\": {\"f_min\": " << params.f_min << ", \"f_max\": " << params.f_max << ", \"oversampling\": " << params.freq_oversampling << "},\n";
+    outfile << "  \"baseline_removal\": {\"model_id\": " << params.model_id << "},\n";
+    outfile << "  \"periodogram\": {\"N_bins\": [" << params.N_bins[0];
+    for (size_t i = 1; i < params.N_bins.size(); ++i) outfile << ", " << params.N_bins[i];
+    outfile << "], \"N_samples\": " << params.N_samples;
+    outfile << ", \"upper_clip_bound\": " << (params.upper_clip_bound.has_value() ? std::to_string(params.upper_clip_bound.value()) : "null");
+    outfile << ", \"lower_clip_bound\": " << (params.lower_clip_bound.has_value() ? std::to_string(params.lower_clip_bound.value()) : "null") << "},\n";
+    outfile << "  \"peak_finding\": {\"peak_distance\": " << params.peak_distance << ", \"peak_threshold\": " << params.peak_threshold << "},\n";
+    outfile << "  \"modes\": {\"seasonal\": " << (params.seasonal ? "true" : "false") << ", \"deep_drilling\": " << (params.deep_drilling ? "true" : "false");
+    outfile << ", \"remove_baseline\": " << (params.remove_baseline ? "true" : "false") << ", \"clip_pgram\": " << (params.clip_pgram ? "true" : "false");
+    outfile << ", \"filter_freq\": " << (params.filter_freq ? "true" : "false") << ", \"filter_freq_file\": \"" << params.filter_freq_filename << "\"},\n";
+    outfile << "}\n";
+    outfile.close();
+}
+
+
 /**
  * @brief Runs a single periodogram algorithm on a single matchfile and writes the results to a file
  * 
@@ -555,6 +527,10 @@ void process(const ProcessingExternalParams& params) {
     std::string results_filename = createOutputFilepath(params.output_dir, params.input_hdf_filename);
     createResults(results_filename, field_data.N_src, params.N_samples, N_peaks);
 
+    // --- Log Processing Parameters ---
+    std::string log_filename = createLogFilepath(params.output_dir, params.input_hdf_filename);
+    logProcessingParams(params, log_filename);
+
     auto stop_preprocess = chrono::high_resolution_clock::now();
     auto duration_preprocess = chrono::duration_cast<chrono::milliseconds>(stop_preprocess - start_preprocess);
     logMessage(params.log_path, params.input_hdf_filename, "Time to load and pre-process: " + to_string(duration_preprocess.count()) + " milliseconds");
@@ -589,7 +565,7 @@ void process(const ProcessingExternalParams& params) {
         auto start_removeOutliers = chrono::high_resolution_clock::now(); // Time removing outliers
 
         //Remove outliers from the fluxes, also median subtracts the fluxes
-        removeOutliers(field_data, sources_data, device_arrays, kernel_params, objnum_periodograms);
+        removeOutliers(params, field_data, sources_data, device_arrays, kernel_params, objnum_periodograms);
 
         auto stop_removeOutliers = chrono::high_resolution_clock::now();
         auto duration_removeOutliers = chrono::duration_cast<chrono::milliseconds>(stop_removeOutliers - start_removeOutliers);
@@ -598,6 +574,8 @@ void process(const ProcessingExternalParams& params) {
         auto start_removebaseline = chrono::high_resolution_clock::now(); // Time removing baseline
 
         if (params.remove_baseline) {
+            logMessage(params.log_path, params.input_hdf_filename, "Removing baseline with model_id " + to_string(params.model_id) + " for chunk starting at index " + to_string(objstart_periodograms) + 
+                                                                    " with " + to_string(objnum_periodograms) + " sources.");
             processBaselineRemoval(params, field_data, sources_data, objstart_periodograms, objnum_periodograms);
         }
         else {
@@ -678,7 +656,6 @@ void process(const ProcessingExternalParams& params) {
 
             auto stop_FPW = std::chrono::high_resolution_clock::now();
             auto duration_FPW = std::chrono::duration_cast<std::chrono::milliseconds>(stop_FPW - start_FPW);
-            // std::cout << "Time taken for cudaDeltaChi2Multibin: " << duration_FPW.count() << " ms" << std::endl;
 
             // If this is the first chunk, compute the mean and STD of the periodograms
             if (i == 0) {

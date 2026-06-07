@@ -298,7 +298,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run cudaFPW batch processing.")
 
     # Required positional arguments
-    parser.add_argument("function", help="Function to run [run_field, run_field_long_period, run_all, run_all_long_period, run_queued, run_queued_long_period]")
+    parser.add_argument(
+    "function",
+    help="Function to run [run_imdiff_field, run_imdiff_field_long_period, run_all_imdiff, run_all_imdiff_long_period, run_queued_imdiff, run_queued_imdiff_long_period, run_zforce_field, run_zforce_field_long_period, run_all_zforce, run_all_zforce_long_period, run_queued_zforce, run_queued_zforce_long_period]"
+    )
 
     # Optional arguments
     parser.add_argument("--num_threads", type=int, default=int(os.environ.get('NUM_THREADS', 4)),
@@ -337,38 +340,39 @@ if __name__ == "__main__":
     # Call the appropriate function
     match args.function:
         case "run_imdiff_field":
-            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field)
+            optional_args = {"filter_freq": 0}
+            run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, optional_args)
         case "run_imdiff_field_long_period":
-            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1, "oversample":3}
             run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, optional_args)
         case "run_all_imdiff":
             run_all(args.num_threads, args.input_path, args.output_path, args.log_path)
         case "run_all_imdiff_long_period":
-            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1, "oversample":3}
             run_all(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
         case "run_queued_imdiff":
             run_queued(args.num_threads, args.input_path, args.output_path, args.log_path)
         case "run_queued_imdiff_long_period":
-            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            optional_args = {"remove_baseline": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1, "oversample":3}
             run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
 
         case "run_zforce_field":
             optional_args = {"remove_baseline": 0, "filter_freq": 0}
             run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, optional_args)
         case "run_zforce_field_long_period":
-            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1, "oversample":3}
             run_field(args.num_threads, args.input_path, args.output_path, args.log_path, args.field, optional_args)
         case "run_all_zforce":
             optional_args = {"remove_baseline": 0, "filter_freq": 0}
             run_all(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
         case "run_all_zforce_long_period":
-            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1, "oversample":3}
             run_all(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
         case "run_queued_zforce":
             optional_args = {"remove_baseline": 0, "filter_freq": 0}
             run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
         case "run_queued_zforce_long_period":
-            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1}
+            optional_args = {"remove_baseline": 0, "filter_freq": 0, "f_min": 1.0 / 1000.0, "f_max": 1.0 / 10.0, "clip_pgram": 1, "oversample":3}
             run_queued(args.num_threads, args.input_path, args.output_path, args.log_path, optional_args)
         case _:
             logging.error(f"Unknown function: {args.function}")
