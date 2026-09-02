@@ -81,5 +81,3 @@ The exact central frequencies and half-widths used in the V1 cuts are encoded in
 ## Contact
 
 - Primary contacts: If you have an issue please submit an issue at https://github.com/zvar-astro/zvar-help/issues or contact Samuel Whitebook (sewhitebook@astro.caltech.edu) or Thomas Culino (tculino@caltech.edu) with questions.
-
--- End of Version 1 --
