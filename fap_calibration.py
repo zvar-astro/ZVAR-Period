@@ -1,8 +1,26 @@
 #!/usr/bin/env python
-"""Significance -> FAP lookup tables for the ZVAR short- and long-period searches.
-Both model the false alarms as a Gumbel (GEV, c = 0) per (band, n_bins); FAP is its
-survival function. Inputs are best peak histograms.
+"""Significance -> false-alarm-probability tables for the ZVAR short and long searches.
+
+A source's significance is the maximum periodogram peak over many trial frequencies,
+so for pure noise it follows a Gumbel distribution (GEV, shape 0). One (mu, beta) is
+fitted per (band, n_bins), and FAP = the Gumbel survival function.
+
+  short (5 min - 10 d)   Least-squares Gumbel fit to the noise hump of the best-peak
+                         density, over the contiguous bins >= 2e-3 of the peak.
+  long  (10 - 1000 d)    The files stop at significance 10, so there is no hump. The
+                         fit is a Poisson MLE on absolute counts, n * width * pdf, over
+                         a fitted window. The window tolerance is the one whose beta
+                         best matches a window-free Gumbel + power-law reference.
+
+Each table has columns significance, FAP, N_sigma (the one-sided Gaussian
+equivalent), on a 0.1 grid: 0-200 (short) or 0-1000 (long).
+    <out>/fap_{g,r}band_{05,10,20}bin.csv
+
+Usage:
+    python fap_calibration.py                 # both searches
+    python fap_calibration.py --search short
 """
+import argparse
 import os
 
 import numpy as np
@@ -10,9 +28,24 @@ import pandas as pd
 from scipy.optimize import curve_fit, minimize
 from scipy.stats import genextreme, norm
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+ZVAR_TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SHORT_HIST = os.path.join(ZVAR_TOOLS, "histogram_data.csv")
+LONG_HIST = os.path.join(ZVAR_TOOLS, "data", "zvar_long_sig_hist.csv")
+SHORT_OUT = os.path.join(ZVAR_TOOLS, "fap_lookup_tables")
+LONG_OUT = os.path.join(ZVAR_TOOLS, "fap_lookup_tables_long_fitwin")
+
 KEYS = [(b, c) for b in "gr" for c in ("20bin", "10bin", "5bin")]
 NBINS = {"20bin": 20, "10bin": 10, "5bin": 5}
+
+# short
+PEAK_FRAC = 2e-3          # fit window: contiguous bins with density >= PEAK_FRAC * peak
+
+# long
+MIN_LAMBDA = 25.0         # bins expecting fewer counts are ignored in window tests
+MIX_DEV_MAX = 3.0         # reference fits worse than this (deviance per bin) are unused
+TOL_GRID = np.array([0.02, 0.03, 0.05, 0.08, 0.12, 0.20, 0.35, 0.50])
+ZLO_GRID = np.round(np.arange(10.0, 16.01, 0.5), 3)
+ZHI_GRID = np.round(np.arange(14.0, 60.01, 0.5), 3)
 
 
 def load_hist(path):
@@ -23,52 +56,10 @@ def load_hist(path):
 
 
 def write_table(out_dir, band, cfg, grid, fap, floor):
-    nsig = norm.isf(np.clip(fap, floor, 1.0 - 1e-15))       # one-sided Gaussian equivalent
     os.makedirs(out_dir, exist_ok=True)
+    nsig = norm.isf(np.clip(fap, floor, 1.0 - 1e-15))
     pd.DataFrame({"significance": grid, "FAP": fap, "N_sigma": nsig}).to_csv(
         os.path.join(out_dir, f"fap_{band}band_{NBINS[cfg]:02d}bin.csv"), index=False)
-
-
-# ── Short period (5 min - 10 d): least-squares Gumbel fit to the noise hump ──────
-PEAK_FRAC = 2e-3     # fit the contiguous bins with density >= PEAK_FRAC * peak
-
-
-def fit_short(bc, d, n):
-    w, pk = float(bc[1] - bc[0]), int(np.argmax(d))
-    lo = hi = pk
-    while lo - 1 >= 0 and d[lo - 1] >= d[pk] * PEAK_FRAC:
-        lo -= 1
-    while hi + 1 < len(d) and d[hi + 1] >= d[pk] * PEAK_FRAC:
-        hi += 1
-    x, y = bc[lo:hi + 1], d[lo:hi + 1]
-    sigma = np.sqrt(np.clip(y * w * n, 1.0, None)) / (w * n)   # Poisson, in density units
-    wt = y / y.sum()                                            # moment guess for beta
-    std = np.sqrt(np.sum(wt * (x - np.sum(x * wt)) ** 2))
-    (mu, beta), _ = curve_fit(lambda z, mu, beta: genextreme.pdf(z, 0.0, loc=mu, scale=beta),
-                              x, y, p0=[bc[pk], max(std, 0.3)], sigma=sigma,
-                              bounds=([-np.inf, 1e-3], [np.inf, np.inf]), maxfev=40000)
-    return mu, beta
-
-
-def short_tables():
-    grid = np.round(np.arange(0.0, 200.0 + 0.1, 0.1), 1)
-    for (band, cfg), (bc, d, n) in load_hist(os.path.join(HERE, "histogram_data.csv")).items():
-        mu, beta = fit_short(bc, d, n)
-        sf = lambda z: np.clip(genextreme.sf(z, 0.0, loc=mu, scale=beta), 1e-300, 1.0)
-        fap = np.where(grid < mu, sf(mu), sf(grid))   # below the mode, clamp to SF(mu) = 1 - 1/e
-        write_table(os.path.join(HERE, "fap_lookup_tables"), band, cfg, grid, fap, 1e-300)
-        print(f"short {band} {cfg:5s}  mu={mu:.4f}  beta={beta:.4f}")
-
-
-# ── Long period (10-1000 d): Poisson MLE on absolute counts, fitted window ───────
-# The files are truncated at significance 10 (no hump), so the model is
-# n_searched * width * gumbel_pdf(z), fitted on a window chosen by tolerance `tol`,
-# with `tol` itself chosen to match a window-free Gumbel + power-law fit.
-MIN_LAMBDA = 25.0    # bins expecting fewer counts are skipped in relative-deviation tests
-MIX_DEV_MAX = 3.0    # mixture fits worse than this (deviance/bin) are not a reference
-TOL_GRID = np.array([0.02, 0.03, 0.05, 0.08, 0.12, 0.20, 0.35, 0.50])
-ZLO_GRID = np.round(np.arange(10.0, 16.01, 0.5), 3)
-ZHI_GRID = np.round(np.arange(14.0, 60.01, 0.5), 3)
 
 
 def gumbel_pdf(z, mu, beta):
@@ -76,8 +67,38 @@ def gumbel_pdf(z, mu, beta):
     return np.exp(-t - np.exp(-t)) / beta
 
 
+# ------------------------------------------------------------ short period
+def fit_short(bc, d, n):
+    """Weighted least-squares Gumbel fit to the hump of the density histogram."""
+    w, pk = float(bc[1] - bc[0]), int(np.argmax(d))
+    lo = hi = pk
+    while lo - 1 >= 0 and d[lo - 1] >= d[pk] * PEAK_FRAC:
+        lo -= 1
+    while hi + 1 < len(d) and d[hi + 1] >= d[pk] * PEAK_FRAC:
+        hi += 1
+    x, y = bc[lo:hi + 1], d[lo:hi + 1]
+    sigma = np.sqrt(np.clip(y * w * n, 1.0, None)) / (w * n)   # Poisson, density units
+    wt = y / y.sum()
+    std = np.sqrt(np.sum(wt * (x - np.sum(x * wt)) ** 2))       # starting beta
+    (mu, beta), _ = curve_fit(lambda z, mu, beta: genextreme.pdf(z, 0.0, loc=mu, scale=beta),
+                              x, y, p0=[bc[pk], max(std, 0.3)], sigma=sigma,
+                              bounds=([-np.inf, 1e-3], [np.inf, np.inf]), maxfev=40000)
+    return mu, beta
+
+
+def short_tables(hist_path, out_dir):
+    grid = np.round(np.arange(0.0, 200.0 + 0.1, 0.1), 1)
+    for (band, cfg), (bc, d, n) in load_hist(hist_path).items():
+        mu, beta = fit_short(bc, d, n)
+        sf = lambda z: np.clip(genextreme.sf(z, 0.0, loc=mu, scale=beta), 1e-300, 1.0)
+        fap = np.where(grid < mu, sf(mu), sf(grid))   # below the mode, hold SF(mu)
+        write_table(out_dir, band, cfg, grid, fap, 1e-300)
+        print(f"short {band} {cfg:5s}  mu={mu:.4f}  beta={beta:.4f}")
+
+
+# ------------------------------------------------------------- long period
 def fit_long(h, z_lo, z_hi, p0=(0.0, 4.3)):
-    """Poisson MLE for (mu, beta) on [z_lo, z_hi]; beta fitted in log."""
+    """Poisson MLE of (mu, beta) on counts in [z_lo, z_hi]. beta is fitted in log."""
     c, k, n, w = h
     sel = (c >= z_lo) & (c <= z_hi)
     if sel.sum() < 8:
@@ -94,7 +115,7 @@ def fit_long(h, z_lo, z_hi, p0=(0.0, 4.3)):
 
 
 def window_scan(h):
-    """(z_lo, z_hi) -> (mu, beta) on the window grid, warm-started along z_hi."""
+    """(z_lo, z_hi) -> (mu, beta) over the window grid, warm-started along z_hi."""
     out = {}
     for z_lo in ZLO_GRID:
         p0 = (0.0, 4.3)
@@ -106,8 +127,11 @@ def window_scan(h):
 
 
 def fitted_window(h, scan, tol, n_iter=8):
-    """Iterate the edges to a fixed point, then refit: upper = first bin > tol above the
-    model; lower = smallest edge whose lower half the model matches within tol."""
+    """Iterate the window edges to a fixed point, then refit.
+
+    The upper edge is the first bin more than tol above the model. The lower edge is
+    the smallest edge whose lower half the model matches to within tol.
+    """
     c, k, n, w = h
     snap = lambda g, z: g[np.argmin(np.abs(g - z))]
     get = lambda lo, hi: scan.get((snap(ZLO_GRID, lo), snap(ZHI_GRID, hi)), (np.nan, np.nan))
@@ -141,8 +165,10 @@ def fitted_window(h, scan, tol, n_iter=8):
 
 
 def mixture_reference(h):
-    """Window-free Gumbel + power-law excess over the whole recorded range.
-    Returns (beta, Poisson deviance per bin)."""
+    """Window-free Gumbel + power-law fit over the whole recorded range.
+
+    Returns (beta, Poisson deviance per bin).
+    """
     c, k, n, w = h
     nz = np.flatnonzero(k)
     sel = (c >= c[nz[0]]) & (np.arange(len(c)) <= nz[-1])
@@ -160,12 +186,13 @@ def mixture_reference(h):
     return float(np.exp(best.x[1])), float(dev)
 
 
-def long_tables():
+def long_tables(hist_path, out_dir):
     hist = {}
-    for key, (c, d, n) in load_hist(os.path.join(HERE, "data", "zvar_long_sig_hist.csv")).items():
+    for key, (c, d, n) in load_hist(hist_path).items():
         w = float(c[1] - c[0])
         hist[key] = (c, np.round(d * w * n).astype(np.int64), n, w)   # density -> counts
 
+    # pick the window tolerance that best reproduces the reference betas
     scans = {key: window_scan(hist[key]) for key in KEYS}
     fits = {tol: {key: fitted_window(hist[key], scans[key], tol) for key in KEYS}
             for tol in TOL_GRID}
@@ -180,11 +207,24 @@ def long_tables():
     tiny = np.finfo(float).tiny
     for (band, cfg), (mu, beta) in fits[tol_star].items():
         fap = np.clip(-np.expm1(-np.exp(-(grid - mu) / beta)), tiny, 1.0)   # Gumbel SF
-        write_table(os.path.join(HERE, "fap_lookup_tables_long_fitwin"),
-                    band, cfg, grid, fap, tiny)
+        write_table(out_dir, band, cfg, grid, fap, tiny)
         print(f"long  {band} {cfg:5s}  mu={mu:.4f}  beta={beta:.4f}")
 
 
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--search", choices=["short", "long", "both"], default="both")
+    ap.add_argument("--short-hist", default=SHORT_HIST)
+    ap.add_argument("--long-hist", default=LONG_HIST)
+    ap.add_argument("--short-out", default=SHORT_OUT)
+    ap.add_argument("--long-out", default=LONG_OUT)
+    a = ap.parse_args()
+    if a.search in ("short", "both"):
+        short_tables(a.short_hist, a.short_out)
+    if a.search in ("long", "both"):
+        long_tables(a.long_hist, a.long_out)
+
+
 if __name__ == "__main__":
-    short_tables()
-    long_tables()
+    main()
