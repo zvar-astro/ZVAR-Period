@@ -1,0 +1,10 @@
+# Ignore CMake build directory
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CMakeLists.txt
+
+# Ignore VSCode settings
+.vscode/
+/test_main.cu
